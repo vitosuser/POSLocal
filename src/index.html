@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:">
+  <title>VitPos</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app">
+    <!-- ===================== SIDEBAR ===================== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">V</div>
+        <div>
+          <div class="brand-name" id="brand-negocio">VitPos</div>
+          <div class="brand-sub">Punto de venta</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-seccion="venta">
+          <svg viewBox="0 0 24 24"><path d="M7 7h11l2 5v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9l3-2zM5 9v12"/><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+          <span>Venta</span>
+        </button>
+        <button class="nav-item" data-seccion="productos">
+          <svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+          <span>Productos</span>
+        </button>
+        <button class="nav-item" data-seccion="stock">
+          <svg viewBox="0 0 24 24"><path d="M4 4h16v4H4zM6 8v12h12V8M10 12h4"/></svg>
+          <span>Stock</span>
+        </button>
+        <button class="nav-item" data-seccion="historial">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          <span>Historial</span>
+        </button>
+        <button class="nav-item" data-seccion="configuracion">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5.1 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2L9.8 21h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
+          <span>Configuración</span>
+        </button>
+      </nav>
+      <div class="sidebar-foot" id="info-version"></div>
+    </aside>
+
+    <!-- ===================== CONTENIDO ===================== -->
+    <main class="content">
+
+      <!-- ========== SECCION VENTA ========== -->
+      <section id="seccion-venta" class="seccion activa">
+        <header class="section-header">
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.7-3.7"/></svg>
+            <input id="buscador-venta" type="text" autocomplete="off" spellcheck="false"
+                   placeholder="Escaneá o escribí el código / nombre del producto..." autofocus>
+            <button id="btn-agregar-lista" class="btn btn-ghost" type="button" title="Agregar a la lista">+ Agregar listado</button>
+          </div>
+          <div id="sugerencias" class="sugerencias oculto"></div>
+          <div class="clock" id="clock"></div>
+        </header>
+
+        <div class="venta-layout">
+          <!-- carrito -->
+          <div class="carrito panel">
+            <div class="panel-titulo">
+              <h2>Compra en curso</h2>
+              <span class="badge" id="carrito-conteo">0 artículos</span>
+            </div>
+            <div class="tabla-scroll">
+              <table class="tabla" id="tabla-carrito">
+                <thead>
+                  <tr><th>Producto</th><th>Precio</th><th>Cant.</th><th>Total</th><th></th></tr>
+                </thead>
+                <tbody id="carrito-body"></tbody>
+              </table>
+              <div class="vacio" id="carrito-vacio">
+                <p>Escaneá productos para empezar la venta.</p>
+              </div>
+            </div>
+            <div class="carrito-foot">
+              <div class="tot-title">TOTAL</div>
+              <div class="tot-amount" id="total-carrito">$ 0,00</div>
+            </div>
+          </div>
+
+          <!-- panel de cobro -->
+          <div class="cobro panel">
+            <h2>Cobro</h2>
+            <div class="cobro-venta-dia">
+              <div class="cobro-item">
+                <span>Ventas hoy</span>
+                <strong id="ventas-hoy-cant">0</strong>
+              </div>
+              <div class="cobro-item">
+                <span>Total hoy</span>
+                <strong id="ventas-hoy-total">$ 0,00</strong>
+              </div>
+              <div class="cobro-item" id="tot-mtd">
+                <span id="tot-mtd-nombre">Pago</span>
+                <strong id="tot-mtd-valor">-</strong>
+              </div>
+            </div>
+
+            <div class="metodos">
+              <span class="metodos-titulo">Método de pago</span>
+              <div class="metodos-grid" id="metodos-pago"></div>
+            </div>
+
+            <button id="btn-cobrar" class="btn btn-cobrar" disabled>
+              <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+              Cobrar
+            </button>
+            <button id="btn-limpiar" class="btn btn-flat">Limpiar venta</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SECCION PRODUCTOS ========== -->
+      <section id="seccion-productos" class="seccion">
+        <header class="section-header simple">
+          <h1>Productos</h1>
+          <div class="toolbar">
+            <input id="buscar-productos" type="text" placeholder="Buscar por nombre o código...">
+            <button id="btn-nuevo-producto" class="btn btn-primary">+ Nuevo producto</button>
+          </div>
+        </header>
+        <div class="panel">
+          <div class="tabla-scroll">
+            <table class="tabla" id="tabla-productos">
+              <thead>
+                <tr>
+                  <th>Código</th><th>Nombre</th><th>Categoría</th>
+                  <th class="num">Precio</th><th class="num">Costo</th>
+                  <th class="num">Stock</th><th class="num">Mínimo</th><th>Estado</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="productos-body"></tbody>
+            </table>
+            <div class="vacio oculto" id="productos-vacio">No hay productos cargados todavía.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SECCION STOCK ========== -->
+      <section id="seccion-stock" class="seccion">
+        <header class="section-header simple">
+          <h1>Stock</h1>
+          <div class="toolbar">
+            <input id="buscar-stock" type="text" placeholder="Buscar producto...">
+            <label class="check"><input type="checkbox" id="solo-bajo-stock"> <span>Solo bajo stock</span></label>
+          </div>
+        </header>
+        <div class="panel">
+          <div class="tabla-scroll">
+            <table class="tabla" id="tabla-stock">
+              <thead>
+                <tr>
+                  <th>Código</th><th>Nombre</th><th>Categoría</th>
+                  <th class="num">Stock</th><th class="num">Mínimo</th><th>Estado</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="stock-body"></tbody>
+            </table>
+            <div class="vacio oculto" id="stock-vacio">No hay productos.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SECCION HISTORIAL ========== -->
+      <section id="seccion-historial" class="seccion">
+        <header class="section-header simple">
+          <h1>Historial de ventas</h1>
+          <div class="toolbar">
+            <input id="h-desde" type="date">
+            <input id="h-hasta" type="date">
+            <select id="h-estado">
+              <option value="">Todos</option>
+              <option value="completada">Completadas</option>
+              <option value="anulada">Anuladas</option>
+            </select>
+            <button id="btn-filtrar-historial" class="btn btn-primary">Filtrar</button>
+          </div>
+        </header>
+        <div class="historial-resumen" id="historial-resumen"></div>
+        <div class="panel">
+          <div class="tabla-scroll">
+            <table class="tabla" id="tabla-historial">
+              <thead>
+                <tr>
+                  <th>N°</th><th>Fecha</th><th>Método</th><th class="num">Artículos</th>
+                  <th class="num">Total</th><th>Estado</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="historial-body"></tbody>
+            </table>
+            <div class="vacio oculto" id="historial-vacio">Sin ventas en el período.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SECCION CONFIGURACION ========== -->
+      <section id="seccion-configuracion" class="seccion">
+        <header class="section-header simple">
+          <h1>Configuración</h1>
+          <div class="toolbar">
+            <button id="btn-guardar-config" class="btn btn-primary">Guardar cambios</button>
+          </div>
+        </header>
+
+        <form id="form-config" class="config-grid">
+          <div class="panel config-card">
+            <h2>Nuestro negocio</h2>
+            <label>Nombre del negocio
+              <input name="nombre_negocio" type="text" maxlength="40">
+            </label>
+            <label>Dirección
+              <input name="direccion" type="text" maxlength="80">
+            </label>
+            <label>Teléfono
+              <input name="telefono" type="text" maxlength="30">
+            </label>
+            <label>Pie del ticket
+              <input name="pie_ticket" type="text" maxlength="60">
+            </label>
+            <label>Símbolo de moneda
+              <input name="simbolo_moneda" type="text" maxlength="5" placeholder="$">
+            </label>
+            <label>Pago por defecto
+              <select name="metodo_pago_default">
+                <option>Efectivo</option><option>Débito</option><option>Crédito</option>
+                <option>Transferencia</option><option>QR</option><option>Mercado Pago</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="panel config-card">
+            <h2>Lectora de código de barras</h2>
+            <p class="hint">La mayoría de las lectoras USB funcionan como teclado: escaneás y aparece el código.
+               Asegurate de que esté configurada para enviar <strong>Enter</strong> al final (ver manual).</p>
+            <label>Tipo de lectora
+              <select name="lect_tipo">
+                <option value="teclado">Teclado (USB, recomendada)</option>
+                <option value="serie" disabled>Serie (requiere driver, próximamente)</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="panel config-card">
+            <h2>Impresora térmica</h2>
+            <p class="hint">Dejá la impresora en <strong>Desactivada</strong> hasta tenerla.
+               Cuando la conectes, elegí el modo y probá con el botón.</p>
+            <label>Estado
+              <select name="imp_papel">
+                <option value="desactivada">Desactivada (solo registra la venta)</option>
+                <option value="red">Red / WiFi (Ethernet)</option>
+                <option value="sistema">Impresora del sistema (Windows/Linux)</option>
+                <option value="serie">Serie / USB (requiere driver)</option>
+              </select>
+            </label>
+            <label>Tipo de conexión
+              <select name="imp_tipo_conexion">
+                <option value="red">Red TCP/IP</option>
+                <option value="serie">Serie / USB</option>
+              </select>
+            </label>
+            <div class="campo-red">
+              <label>Dirección IP <input name="imp_ip" type="text" placeholder="192.168.1.50"></label>
+              <label>Puerto <input name="imp_puerto_red" type="number" placeholder="9100"></label>
+            </div>
+            <div class="campo-serie">
+              <label>Puerto serie <input name="imp_serie_puerto" type="text" placeholder="COM3 / /dev/ttyUSB0"></label>
+              <label>Baud rate <input name="imp_serie_baudrate" type="number" placeholder="9600"></label>
+            </div>
+            <label>Ancho del papel
+              <select name="imp_ancho">
+                <option value="58">58 mm</option>
+                <option value="80">80 mm</option>
+              </select>
+            </label>
+            <div class="toolbar">
+              <button type="button" id="btn-probar-impresora" class="btn">Probar impresora</button>
+            </div>
+          </div>
+
+          <div class="panel config-card">
+            <h2>Backup a la nube</h2>
+            <p class="hint">Elegí una carpeta sincronizada (Dropbox, Google Drive, OneDrive) para que se copie
+               la base automáticamente. Es la forma más simple y segura para una sola PC.</p>
+            <label class="check"><input name="backup_activado" type="checkbox" value="1"> <span>Activar backup automático</span></label>
+            <label>Carpeta destino
+              <input name="backup_carpeta" type="text" placeholder="C:\Users\tu\Dropbox\VitPosBackup">
+            </label>
+            <label>Frecuencia
+              <select name="backup_frecuencia">
+                <option value="cierre">Al cerrar el programa</option>
+                <option value="diario">Todos los días</option>
+                <option value="manual">Solo manual</option>
+              </select>
+            </label>
+            <label>Hora (si es diario)
+              <input name="backup_hora" type="time">
+            </label>
+            <div class="toolbar">
+              <button type="button" id="btn-backup-ahora" class="btn">Hacer backup ahora</button>
+            </div>
+            <div id="backup-estado" class="estado-info"></div>
+          </div>
+
+          <div class="panel config-card">
+            <h2>Sistema</h2>
+            <dl class="info-list" id="info-sistema"></dl>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===================== MODALS ===================== -->
+  <div class="modal-overlay oculto" id="modal-producto">
+    <div class="modal">
+      <header class="modal-header">
+        <h2 id="modal-producto-titulo">Nuevo producto</h2>
+        <button class="modal-close" data-cerrar="modal-producto">&times;</button>
+      </header>
+      <div class="modal-body">
+        <label class="campo-ancho">Código de barras
+          <input id="p-codigo" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="campo-ancho">Nombre
+          <input id="p-nombre" type="text" autocomplete="off">
+        </label>
+        <div class="campo-2">
+          <label>Categoría
+            <input id="p-categoria" type="text" list="lista-categorias" autocomplete="off">
+          </label>
+          <label>Stock inicial / actual
+            <input id="p-stock" type="number" step="0.001" min="0">
+          </label>
+        </div>
+        <datalist id="lista-categorias"></datalist>
+        <div class="campo-2">
+          <label>Precio de venta
+            <input id="p-precio" type="number" step="0.01" min="0" placeholder="0,00">
+          </label>
+          <label>Costo
+            <input id="p-costo" type="number" step="0.01" min="0" placeholder="0,00">
+          </label>
+        </div>
+        <div class="campo-2">
+          <label>Stock mínimo (alerta)
+            <input id="p-stock-minimo" type="number" step="0.001" min="0">
+          </label>
+          <label>Estado
+            <select id="p-activo">
+              <option value="1">Activo (se vende)</option>
+              <option value="0">Inactivo (no se vende)</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn-flat" data-cerrar="modal-producto">Cancelar</button>
+        <button class="btn btn-primary" id="btn-guardar-producto">Guardar</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal-overlay oculto" id="modal-cobro">
+    <div class="modal">
+      <header class="modal-header">
+        <h2>Cobrar venta</h2>
+        <button class="modal-close" data-cerrar="modal-cobro">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div class="cobro-total-grande" id="modal-total">$ 0,00</div>
+        <label>Método de pago
+          <select id="c-metodo-pago"></select>
+        </label>
+        <label>Descuento
+          <input id="c-descuento" type="number" step="0.01" min="0" placeholder="0,00">
+        </label>
+        <label>Recibido
+          <input id="c-recibido" type="number" step="0.01" min="0">
+        </label>
+        <div class="cobro-rapido" id="cobro-rapido"></div>
+        <div class="cambio-box" id="cambio-box">
+          <span>Cambio</span>
+          <strong id="c-cambio">$ 0,00</strong>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn-flat" data-cerrar="modal-cobro">Cancelar</button>
+        <button class="btn btn-primary btn-big" id="btn-confirmar-cobro">Confirmar y cobrar</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal-overlay oculto" id="modal-ajuste-stock">
+    <div class="modal modal-sm">
+      <header class="modal-header">
+        <h2 id="mj-titulo">Ajuste de stock</h2>
+        <button class="modal-close" data-cerrar="modal-ajuste-stock">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div id="mj-producto" class="estado-info"></div>
+        <label>Tipo
+          <select id="mj-tipo">
+            <option value="compra">Compra / reposición</option>
+            <option value="ajuste">Ajuste manual</option>
+            <option value="salida">Salida / merma</option>
+          </select>
+        </label>
+        <label>Cantidad (+ entrada, - salida)
+          <input id="mj-cantidad" type="number" step="0.001">
+        </label>
+        <label>Nota (opcional)
+          <input id="mj-nota" type="text" maxlength="200" placeholder="Ej: compra proveedor, vencido, roto...">
+        </label>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn-flat" data-cerrar="modal-ajuste-stock">Cancelar</button>
+        <button class="btn btn-primary" id="btn-guardar-ajuste">Aplicar</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal-overlay oculto" id="modal-movimientos">
+    <div class="modal">
+      <header class="modal-header">
+        <h2 id="mm-titulo">Movimientos de stock</h2>
+        <button class="modal-close" data-cerrar="modal-movimientos">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div class="tabla-scroll">
+          <table class="tabla">
+            <thead><tr><th>Fecha</th><th>Tipo</th><th class="num">Cantidad</th><th class="num">Resultante</th><th>Nota</th></tr></thead>
+            <tbody id="mm-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay oculto" id="modal-venta">
+    <div class="modal">
+      <header class="modal-header">
+        <h2 id="mv-titulo">Detalle de venta</h2>
+        <button class="modal-close" data-cerrar="modal-venta">&times;</button>
+      </header>
+      <div class="modal-body">
+        <div id="mv-info" class="estado-info"></div>
+        <div class="tabla-scroll">
+          <table class="tabla">
+            <thead><tr><th>Producto</th><th class="num">Cant.</th><th class="num">P.Unit</th><th class="num">Total</th></tr></thead>
+            <tbody id="mv-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <footer class="modal-footer">
+        <button class="btn btn-flat" data-cerrar="modal-venta">Cerrar</button>
+        <button class="btn btn-danger" id="btn-anular-venta">Anular venta</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="modal-overlay oculto" id="modal-cambio">
+    <div class="modal modal-sm cambio-modal">
+      <div class="cambio-ok">✓</div>
+      <h2>Venta N° <span id="cambio-venta-id"></span></h2>
+      <p>Cambio a entregar</p>
+      <div class="cambio-grande" id="cambio-resultado">$ 0,00</div>
+      <button class="btn btn-primary btn-big" data-cerrar="modal-cambio" id="btn-cambio-continuar">Continuar</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast oculto"></div>
+
+  <script src="js/common.js"></script>
+  <script src="js/venta.js"></script>
+  <script src="js/productos.js"></script>
+  <script src="js/stock.js"></script>
+  <script src="js/historial.js"></script>
+  <script src="js/configuracion.js"></script>
+</body>
+</html>
