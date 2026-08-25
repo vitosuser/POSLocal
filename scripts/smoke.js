@@ -75,8 +75,40 @@ app.whenReady().then(() => {
             resultado.metodos !== 6) {
           process.stdout.write('SMOKE FAIL ui: ' + JSON.stringify(resultado) + '\n')
         } else {
-          process.stdout.write('SMOKE OK: ' + JSON.stringify(resultado) + '\n')
-          salida = 0
+          // 3) seccion reportes: navegar y verificar render con la venta recien hecha
+          const rep = await win.webContents.executeJavaScript(`(async () => {
+            document.querySelector('.nav-item[data-seccion="reportes"]').click()
+            await new Promise(r => setTimeout(r, 400))
+            return {
+              activa: document.querySelector('.seccion.activa')?.id,
+              tarjetas: document.querySelectorAll('#rep-resumen .rep-card').length,
+              facturado: document.querySelector('#rep-resumen .rep-card strong')?.textContent,
+              columnas: document.querySelectorAll('#rep-chart .rep-col').length,
+              topFilas: document.querySelectorAll('#rep-topfac-body tr').length,
+              marcaFila: document.querySelector('#rep-marcas-body')?.textContent || ''
+            }
+          })()`)
+          if (rep.activa !== 'seccion-reportes' || rep.tarjetas < 5 || !/\$/.test(rep.facturado) ||
+              rep.columnas !== 7 || rep.topFilas < 1) {
+            process.stdout.write('SMOKE FAIL reportes: ' + JSON.stringify(rep) + '\n')
+          } else {
+            // 4) renombrado de codigo via IPC: nuevo responde, viejo queda libre
+            const ren = await win.webContents.executeJavaScript(`(async () => {
+              const g = await window.api.productos.guardar({
+                codigo_barras: '7790000000099', codigo_original: '7790000000011',
+                nombre: 'Croquetas Perro 3kg', precio: 15000, costo: 10000, stock: 8
+              })
+              const nuevo = await window.api.productos.obtener('7790000000099')
+              const viejo = await window.api.productos.obtener('7790000000011')
+              return { ok: g.ok, nuevoExiste: !!(nuevo.ok && nuevo.datos), viejoLibre: !(viejo.ok && viejo.datos) }
+            })()`)
+            if (!ren.ok || !ren.nuevoExiste || !ren.viejoLibre) {
+              process.stdout.write('SMOKE FAIL renombrado: ' + JSON.stringify(ren) + '\n')
+            } else {
+              process.stdout.write('SMOKE OK: ' + JSON.stringify({ ...resultado, reportes: rep, renombrado: ren }) + '\n')
+              salida = 0
+            }
+          }
         }
       } catch (e) {
         process.stdout.write('SMOKE ERROR: ' + (e && e.message) + '\n')

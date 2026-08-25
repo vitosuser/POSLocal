@@ -32,6 +32,10 @@ const api = {
     ahora: () => invoke('backup:now'),
     estado: () => invoke('backup:estado')
   },
+  reportes: {
+    generar: (filtro) => invoke('reportes:generar', filtro),
+    exportarPdf: (filtro) => invoke('reportes:pdf', filtro)
+  },
   impresora: {
     estado: () => invoke('printer:estado'),
     probar: () => invoke('printer:probar'),

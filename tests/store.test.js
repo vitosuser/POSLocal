@@ -35,6 +35,37 @@ test('da de alta y modifica un producto', () => {
   db.close()
 })
 
+test('renombra el codigo de un producto sin duplicarlo', () => {
+  const db = openDb(tempDir())
+  store.guardarProducto(db, { codigo_barras: 'A1', nombre: 'Prod A', precio: 1000, costo: 400, stock: 7 })
+  const r = store.guardarProducto(db, {
+    codigo_barras: 'B2', codigo_original: 'A1',
+    nombre: 'Prod A', precio: 1000, costo: 400, stock: 7
+  })
+  assert.equal(r.codigo_barras, 'B2')
+  assert.ok(store.obtenerProducto(db, 'B2'), 'el producto existe con el codigo nuevo')
+  assert.equal(store.obtenerProducto(db, 'A1'), undefined, 'el codigo viejo queda libre')
+  assert.equal(store.listarProductos(db).length, 1)
+  assert.equal(store.obtenerProducto(db, 'B2').stock, 7)
+
+  // colision: no puede renombrar a un codigo ya ocupado
+  store.guardarProducto(db, { codigo_barras: 'C3', nombre: 'Prod C' })
+  assert.throws(() => store.guardarProducto(db, {
+    codigo_barras: 'C3', codigo_original: 'B2', nombre: 'Prod A'
+  }), /Ya existe/)
+
+  // original inexistente
+  assert.throws(() => store.guardarProducto(db, {
+    codigo_barras: 'Z9', codigo_original: 'NOPE', nombre: 'X'
+  }), /ya no existe/)
+
+  // sin cambios de codigo sigue funcionando como antes
+  store.guardarProducto(db, { codigo_barras: 'B2', nombre: 'Prod A2' })
+  assert.equal(store.obtenerProducto(db, 'B2').nombre, 'Prod A2')
+  assert.equal(store.obtenerProducto(db, 'B2').stock, 7)
+  db.close()
+})
+
 test('crea venta, descuenta stock y guarda snapshot', () => {
   const db = openDb(tempDir())
   store.guardarProducto(db, { codigo_barras: 'x1', nombre: 'A', precio: 1000, costo: 500, stock: 5 })
@@ -91,5 +122,70 @@ test('backup genera archivo de snapshot', () => {
   assert.equal(fs.existsSync(r.archivo), true)
   // el snapshot se puede abrir como base
   const snap = openDb(path.dirname(r.archivo) + '-x').close()
+  db.close()
+})
+
+test('generarReporte calcula resumen, agrupaciones y excluye anuladas', () => {
+  const db = openDb(tempDir())
+  store.guardarProducto(db, { codigo_barras: 'x1', nombre: 'A', marca: 'Royal Canin', categoria: 'Alimentos', precio: 1000, costo: 400, stock: 20 })
+  store.guardarProducto(db, { codigo_barras: 'x2', nombre: 'B', marca: 'Royal Canin', categoria: 'Alimentos', precio: 500, costo: 200, stock: 20 })
+  store.guardarProducto(db, { codigo_barras: 'x3', nombre: 'C', categoria: 'Limpieza', precio: 300, costo: 100, stock: 20 })
+  assert.equal(store.obtenerProducto(db, 'x1').marca, 'Royal Canin')
+
+  // semana fija: lun 2026-08-03 a dom 2026-08-09
+  store.crearVenta(db, { items: [{ codigo: 'x1', cantidad: 2 }], metodo_pago: 'Efectivo', fecha: '2026-08-03 10:00:00' })
+  store.crearVenta(db, { items: [{ codigo: 'x2', cantidad: 1 }, { codigo: 'x3', cantidad: 1 }], metodo_pago: 'Tarjeta', fecha: '2026-08-04 11:00:00' })
+  // venta fuera del rango pero dentro del período anterior (para variación)
+  store.crearVenta(db, { items: [{ codigo: 'x1', cantidad: 1 }], metodo_pago: 'Efectivo', fecha: '2026-08-01 12:00:00' })
+  // venta anulada dentro del rango: no debe contar
+  const { ventaId } = store.crearVenta(db, { items: [{ codigo: 'x1', cantidad: 5 }], metodo_pago: 'Efectivo', fecha: '2026-08-05 09:00:00' })
+  store.anularVenta(db, ventaId)
+
+  const rep = store.generarReporte(db, { desde: '2026-08-03', hasta: '2026-08-09' })
+
+  assert.deepEqual(rep.periodo, { desde: '2026-08-03', hasta: '2026-08-09' })
+  assert.equal(rep.resumen.ventas, 2)
+  assert.equal(rep.resumen.facturado, 2800)
+  assert.equal(rep.resumen.unidades, 4)
+  assert.equal(rep.resumen.utilidad, 1700)
+  assert.equal(rep.resumen.ticketPromedio, 1400)
+  assert.equal(rep.resumen.promedioDiario, 400, 'semana completa ya transcurrida')
+  assert.equal(rep.resumen.variacionPct, 180, '+180% vs semana anterior')
+
+  assert.equal(rep.porDia.length, 2)
+  assert.deepEqual(rep.porDia[0], { fecha: '2026-08-03', facturado: 2000, unidades: 2, ventas: 1 })
+
+  assert.equal(rep.porDiaSemana[0].nombre, 'Lunes')
+  assert.equal(rep.porDiaSemana[0].facturado, 2000)
+  assert.equal(rep.porDiaSemana[1].facturado, 800)
+  assert.equal(rep.porDiaSemana[6].facturado, 0)
+
+  assert.equal(rep.topProductos[0].codigo, 'x1')
+  assert.equal(rep.topProductos[0].marca, 'Royal Canin')
+  assert.equal(rep.topProductos[0].unidades, 2)
+  assert.equal(rep.topProductos[0].facturado, 2000)
+  assert.equal(rep.topProductos[0].utilidad, 1200)
+
+  assert.equal(rep.topUnidades[0].codigo, 'x1')
+  assert.equal(rep.topUnidades[0].unidades, 2)
+
+  assert.equal(rep.porMarca[0].nombre, 'Royal Canin')
+  assert.equal(rep.porMarca[0].unidades, 3)
+  assert.equal(rep.porMarca[0].facturado, 2500)
+  assert.equal(rep.porMarca[1].nombre, '(sin marca)')
+  assert.equal(rep.porMarca[1].facturado, 300)
+
+  assert.equal(rep.porCategoria[0].nombre, 'Alimentos')
+  assert.equal(rep.porCategoria[0].facturado, 2500)
+
+  assert.equal(rep.porMetodoPago[0].nombre, 'Efectivo')
+  assert.equal(rep.porMetodoPago[0].ventas, 1)
+  assert.equal(rep.porMetodoPago[0].facturado, 2000)
+  assert.equal(rep.porMetodoPago[1].nombre, 'Tarjeta')
+  assert.equal(rep.porMetodoPago[1].facturado, 800)
+
+  assert.equal(rep.anterior.facturado, 1000)
+
+  assert.throws(() => store.generarReporte(db, {}), /rango/)
   db.close()
 })

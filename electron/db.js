@@ -63,7 +63,9 @@ const MIGRATIONS = [
     clave TEXT PRIMARY KEY,
     valor TEXT NOT NULL
   );
-  `
+  `,
+  // ---- v2: marca del producto (para reportes) ----
+  `ALTER TABLE productos ADD COLUMN marca TEXT NOT NULL DEFAULT '';`
 ]
 
 const SETTING_DEFAULTS = {

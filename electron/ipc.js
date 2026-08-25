@@ -1,10 +1,11 @@
 'use strict'
 
-const { ipcMain, BrowserWindow } = require('electron')
+const { ipcMain, BrowserWindow, dialog } = require('electron')
 const store = require('./store.js')
 const backup = require('./backup.js')
 const ticket = require('./printer/ticket.js')
 const red = require('./printer/red.js')
+const { exportarReportePdf } = require('./reporte-pdf.js')
 
 const pkg = require('../package.json')
 
@@ -113,11 +114,18 @@ function registrarIpc (ctx) {
     await enviarBuffer(s, ticket.ticketPrueba(s))
     return { ok: true }
   }))
-  ipcMain.handle('printer:imprimirVenta', conOKAsync(async (_e, id) => {
+  ipcMain.handle('printer:imprimirVenta', conOKAsync(async (id) => {
     const venta = store.obtenerVenta(db, id)
     if (!venta) throw new Error('Venta no encontrada')
     const s = store.obtenerSettings(db)
     return imprimirTicket(venta, s)
+  }))
+
+  // ---- Reportes ----
+  ipcMain.handle('reportes:generar', conOK((f) => store.generarReporte(db, f || {})))
+  ipcMain.handle('reportes:pdf', conOKAsync(async (f) => {
+    const reporte = store.generarReporte(db, f || {})
+    return exportarReportePdf(reporte, app)
   }))
 
   // ---- App ----

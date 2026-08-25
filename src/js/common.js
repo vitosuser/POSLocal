@@ -47,18 +47,65 @@ function toast (msg, tipo = '') {
   toastTimer = setTimeout(() => { t.classList.add('oculto') }, 3200)
 }
 
+function hayModalAbierto () {
+  return $$('.modal-overlay').some(m => !m.classList.contains('oculto'))
+}
+
+function esCampoEditable (el) {
+  if (!el) return false
+  if (el.isContentEditable) return true
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)
+}
+
+function refocusVenta () {
+  if (App.seccionActual !== 'venta' || hayModalAbierto()) return
+  setTimeout(() => {
+    const b = $('#buscador-venta')
+    if (b) b.focus()
+  }, 30)
+}
+
+// Refresca los datos de la seccion entrante con lo que hay hoy en la base
+async function refrescarSeccion (nombre) {
+  try {
+    if (nombre === 'venta') {
+      await cargarProductos()
+      if (typeof revincularCarrito === 'function') revincularCarrito()
+      renderCarrito()
+      actualizarVentasDelDia()
+    } else if (nombre === 'productos') {
+      await cargarProductos()
+      renderProductos()
+    } else if (nombre === 'stock') {
+      await cargarProductos()
+      renderStock()
+    } else if (nombre === 'historial') {
+      buscarHistorial()
+    } else if (nombre === 'reportes') {
+      if (typeof renderReportes === 'function') renderReportes()
+    } else if (nombre === 'configuracion') {
+      cargarConfigForm()
+      cargarEstadoBackup()
+      cargarInfoSistema()
+    }
+  } catch (_) { /* nunca romper la navegacion */ }
+}
+
 function mostrarSeccion (nombre) {
   App.seccionActual = nombre
   $$('.seccion').forEach(s => s.classList.toggle('activa', s.id === `seccion-${nombre}`))
   $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.seccion === nombre))
-  // el buscador de venta siempre listo
+  refrescarSeccion(nombre)
   setTimeout(() => {
     if (nombre === 'venta') $('#buscador-venta').focus()
   }, 40)
 }
 
 function modalAbrir (id) { $(`#${id}`).classList.remove('oculto') }
-function modalCerrar (id) { $(`#${id}`).classList.add('oculto') }
+function modalCerrar (id) {
+  $(`#${id}`).classList.add('oculto')
+  refocusVenta()
+}
 
 function reloj () {
   const el = $('#clock')
@@ -84,15 +131,38 @@ function initCommon () {
   $$('.nav-item').forEach(b => b.addEventListener('click', () => mostrarSeccion(b.dataset.seccion)))
   $$('[data-cerrar]').forEach(b => b.addEventListener('click', () => modalCerrar(b.dataset.cerrar)))
   $$('.modal-overlay').forEach(m => m.addEventListener('click', (e) => {
-    if (e.target === m) m.classList.add('oculto')
+    if (e.target === m) { m.classList.add('oculto'); refocusVenta() }
   }))
+  // lo que se tipea fuera de un campo va derecho al buscador de venta
+  window.addEventListener('keydown', capturaTeclasGlobales, true)
   reloj()
   setInterval(reloj, 1000)
 }
 
+function capturaTeclasGlobales (e) {
+  if (App.seccionActual !== 'venta') return
+  if (hayModalAbierto()) return
+  const t = e.target
+  if (esCampoEditable(t)) return
+  // no robar el Enter/Espacio a los botones
+  if ((e.key === 'Enter' || e.key === ' ') && t && t.tagName === 'BUTTON') return
+  const buscador = $('#buscador-venta')
+  if (!buscador) return
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    buscador.focus()
+  } else if (e.key === 'Enter' && document.activeElement !== buscador) {
+    e.preventDefault()
+    buscador.focus()
+    buscador.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
+  } else if (e.key === 'Backspace') {
+    buscador.focus()
+  }
+}
+
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    $$('.modal-overlay').forEach(m => { if (!m.classList.contains('oculto')) m.classList.add('oculto') })
+    $$('.modal-overlay').forEach(m => { if (!m.classList.contains('oculto')) { m.classList.add('oculto'); refocusVenta() } })
+    if (typeof ocultarSugerencias === 'function') ocultarSugerencias()
   }
   if (e.ctrlKey && e.key.toLowerCase() === 'f') {
     e.preventDefault()

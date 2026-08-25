@@ -7,18 +7,39 @@ const Venta = {
   metodoSeleccionado: 'Efectivo'
 }
 
+// espera el "burst" del escaner antes de decidir si es un codigo completo
+const SCAN_DEBOUNCE_MS = 100
+let scanTimer = null
+let sugerenciasLista = []
+let sugerenciaIdx = 0
+
 function initVenta () {
   const input = $('#buscador-venta')
   const btnNuevo = $('#btn-agregar-lista')
 
   input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moverSugerencia(1); return }
+    if (e.key === 'ArrowUp') { e.preventDefault(); moverSugerencia(-1); return }
+    if (e.key === 'Escape') { ocultarSugerencias(); return }
     if (e.key === 'Enter') {
       e.preventDefault()
-      manejarEntrada(input.value.trim())
+      clearTimeout(scanTimer)
+      const activa = sugerenciaActiva()
+      if (!$('#sugerencias').classList.contains('oculto') && activa) {
+        agregar(activa)
+        limpiarBuscador()
+      } else {
+        manejarEntrada(input.value.trim())
+      }
     }
   })
 
-  input.addEventListener('input', () => buscarSugerencias(input.value.trim()))
+  input.addEventListener('input', () => {
+    const valor = input.value.trim()
+    clearTimeout(scanTimer)
+    if (!valor) { ocultarSugerencias(); return }
+    scanTimer = setTimeout(() => procesarEntradaSinEnter(valor), SCAN_DEBOUNCE_MS)
+  })
 
   btnNuevo.addEventListener('click', () => abrirModalProducto())
 
@@ -61,19 +82,41 @@ function initVenta () {
 
 // ---------- entrada (escanear / escribir) ----------
 
+// se ejecuta cuando el tipeo se detiene: codigo exacto agrega solo,
+// si no muestra sugerencias para elegir
+function procesarEntradaSinEnter (valor) {
+  if (!valor) return
+  const exacto = App.productosCache.find(p => String(p.codigo_barras) === valor)
+  if (exacto) {
+    if (!exacto.activo) toast(`"${exacto.nombre}" está desactivado`, 'error')
+    else agregar(exacto)
+    limpiarBuscador()
+    return
+  }
+  buscarEnCache(valor).then(l => l.length ? mostrarSugerencias(l) : ocultarSugerencias())
+}
+
+function limpiarBuscador () {
+  const input = $('#buscador-venta')
+  input.value = ''
+  ocultarSugerencias()
+  input.focus()
+}
+
 async function manejarEntrada (valor) {
+  clearTimeout(scanTimer)
   ocultarSugerencias()
   if (!valor) return
   const input = $('#buscador-venta')
 
   if (valor.length <= 24 && /^\d+$/.test(valor)) {
     const ok = await agregarPorCodigo(valor)
-    if (ok) { input.value = ''; input.focus(); return }
+    if (ok) { limpiarBuscador(); return }
     // código desconocido → ofrecer crearlo
     const crear = confirm(`El código ${valor} no existe. ¿Crear el producto ahora?`)
     if (crear) {
       abrirModalProducto(valor)
-      input.value = ''
+      limpiarBuscador()
     }
     return
   }
@@ -85,8 +128,7 @@ async function manejarEntrada (valor) {
   }
   if (res.length === 1) {
     agregar(res[0])
-    input.value = ''
-    input.focus()
+    limpiarBuscador()
     return
   }
   mostrarSugerencias(res)
@@ -142,35 +184,45 @@ function buscarEnCache (texto) {
 function mostrarSugerencias (lista) {
   const caja = $('#sugerencias')
   caja.innerHTML = ''
+  sugerenciasLista = lista
+  sugerenciaIdx = 0
   if (!lista.length) { caja.classList.add('oculto'); return }
-  lista.forEach(p => {
+  lista.forEach((p, i) => {
     const d = document.createElement('div')
-    d.className = 'sug-item'
+    d.className = 'sug-item' + (i === sugerenciaIdx ? ' colocada' : '')
     const st = p.stock <= 0 ? 'sin stock' : `stock: ${fmtStock(p.stock)}`
-    d.innerHTML = `<span class="sug-nombre">${esc(p.nombre)}</span>
+    d.innerHTML = `<span class="sug-codigo">${esc(p.codigo_barras)}</span>
+      <span class="sug-nombre">${esc(p.nombre)}</span>
       <span class="sug-precio">${fmtMoneda(p.precio)}</span>
       <span class="sug-stock">${st}</span>`
-    d.addEventListener('click', () => { agregar(p); ocultarSugerencias(); $('#buscador-venta').value = '' })
+    d.addEventListener('click', () => { agregar(p); limpiarBuscador() })
     caja.appendChild(d)
   })
   caja.classList.remove('oculto')
 }
 
-function ocultarSugerencias () { $('#sugerencias').classList.add('oculto') }
+function ocultarSugerencias () {
+  const caja = $('#sugerencias')
+  if (caja) caja.classList.add('oculto')
+  sugerenciasLista = []
+  sugerenciaIdx = 0
+}
 
-function buscarSugerencias (texto) {
-  if (!texto || /^\d+$/.test(texto)) {
-    if (!texto) ocultarSugerencias()
-    else {
-      // mostrar candidatos por dígitos (scan dice código)
-      buscarEnCache(texto).then(l => {
-        if (l.length && String(l[0].codigo_barras) !== texto) mostrarSugerencias(l)
-        else ocultarSugerencias()
-      })
-    }
-    return
-  }
-  buscarEnCache(texto).then(mostrarSugerencias)
+function resaltarSugerencia () {
+  $$('#sugerencias .sug-item').forEach((el, i) => {
+    el.classList.toggle('colocada', i === sugerenciaIdx)
+    if (i === sugerenciaIdx && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' })
+  })
+}
+
+function moverSugerencia (delta) {
+  if (!sugerenciasLista.length) return
+  sugerenciaIdx = (sugerenciaIdx + delta + sugerenciasLista.length) % sugerenciasLista.length
+  resaltarSugerencia()
+}
+
+function sugerenciaActiva () {
+  return sugerenciasLista[sugerenciaIdx] || null
 }
 
 // ---------- carrito ----------
@@ -225,6 +277,20 @@ function renderCarrito () {
 function limpiarCarrito () {
   Venta.carrito.clear()
   renderCarrito()
+}
+
+// al volver a la seccion venta, actualiza los items del carrito con los
+// datos frescos de la base (precio/stock) sin perder cantidades
+function revincularCarrito () {
+  Venta.carrito.forEach((item, codigo) => {
+    const fresco = App.productosCache.find(p => p.codigo_barras === codigo)
+    if (!fresco) {
+      Venta.carrito.delete(codigo)
+      toast(`"${item.producto.nombre}" ya no existe y se quitó de la venta`, 'error')
+    } else {
+      item.producto = fresco
+    }
+  })
 }
 
 // ---------- cobro ----------
@@ -344,5 +410,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   initProductos()
   initStock()
   initHistorial()
+  initReportes()
   initConfiguracion()
 })

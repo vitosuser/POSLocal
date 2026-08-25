@@ -1,6 +1,7 @@
 'use strict'
 
 let productosFiltro = ''
+let productoEditando = null // codigo_barras original mientras se edita
 
 function initProductos () {
   $('#btn-nuevo-producto').addEventListener('click', () => abrirModalProducto())
@@ -19,8 +20,11 @@ function initProductos () {
 function abrirModalProducto (codigoPrecargado = '') {
   const categorias = [...new Set(App.productosCache.map(p => p.categoria).filter(Boolean))].sort()
   $('#lista-categorias').innerHTML = categorias.map(c => `<option value="${esc(c)}">`).join('')
+  const marcas = [...new Set(App.productosCache.map(p => p.marca).filter(Boolean))].sort()
+  $('#lista-marcas').innerHTML = marcas.map(c => `<option value="${esc(c)}">`).join('')
 
   const modal = $('#modal-producto')
+  productoEditando = null
   if (codigoPrecargado) {
     $('#p-codigo').value = codigoPrecargado
     $('#modal-producto-titulo').textContent = 'Nuevo producto'
@@ -34,6 +38,7 @@ function abrirModalProducto (codigoPrecargado = '') {
   }
   $('#p-nombre').value = ''
   $('#p-categoria').value = ''
+  $('#p-marca').value = ''
   $('#p-stock').value = ''
   $('#p-stock-minimo').value = ''
   $('#p-precio').value = ''
@@ -44,10 +49,12 @@ function abrirModalProducto (codigoPrecargado = '') {
 }
 
 function editarProducto (p) {
+  productoEditando = p.codigo_barras
   $('#modal-producto-titulo').textContent = `Editar: ${p.nombre}`
   $('#p-codigo').value = p.codigo_barras
   $('#p-nombre').value = p.nombre
   $('#p-categoria').value = p.categoria || ''
+  $('#p-marca').value = p.marca || ''
   $('#p-stock').value = p.stock
   $('#p-stock-minimo').value = p.stock_minimo
   $('#p-precio').value = p.precio / 100
@@ -62,19 +69,31 @@ async function guardarProductoForm () {
     codigo_barras: $('#p-codigo').value.trim(),
     nombre: $('#p-nombre').value.trim(),
     categoria: $('#p-categoria').value.trim(),
+    marca: $('#p-marca').value.trim(),
     stock: $('#p-stock').value,
     stock_minimo: $('#p-stock-minimo').value,
     precio: aCentavos($('#p-precio').value),
     costo: aCentavos($('#p-costo').value),
     activo: $('#p-activo').value === '1'
   }
+  if (productoEditando) datos.codigo_original = productoEditando
   if (!datos.codigo_barras) return toast('El código de barras es obligatorio', 'error')
   if (!datos.nombre) return toast('El nombre es obligatorio', 'error')
 
   const r = await window.api.productos.guardar(datos)
   if (!r.ok) { toast(r.error, 'error'); return }
+  const codigoViejo = productoEditando
+  productoEditando = null
+  // si se renombro un producto que esta en el carrito, actualizar su clave
+  if (codigoViejo && codigoViejo !== datos.codigo_barras && typeof Venta !== 'undefined' && Venta.carrito.has(codigoViejo)) {
+    const item = Venta.carrito.get(codigoViejo)
+    Venta.carrito.delete(codigoViejo)
+    item.producto = r.datos
+    Venta.carrito.set(datos.codigo_barras, item)
+    if (typeof renderCarrito === 'function') renderCarrito()
+  }
   modalCerrar('modal-producto')
-  toast(r.datos ? 'Producto guardado ✓' : 'Producto guardado ✓')
+  toast('Producto guardado ✓')
   await cargarProductos()
   renderProductos()
   $('#buscador-venta').focus()
@@ -114,6 +133,7 @@ function renderProductos () {
     tr.innerHTML = `
       <td class="mono">${esc(p.codigo_barras)}</td>
       <td><strong>${esc(p.nombre)}</strong></td>
+      <td>${esc(p.marca || '—')}</td>
       <td>${esc(p.categoria || '—')}</td>
       <td class="num">${fmtMoneda(p.precio)}</td>
       <td class="num">${fmtMoneda(p.costo)}</td>

@@ -34,6 +34,10 @@
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
           <span>Historial</span>
         </button>
+        <button class="nav-item" data-seccion="reportes">
+          <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+          <span>Reportes</span>
+        </button>
         <button class="nav-item" data-seccion="configuracion">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7 7 0 0 0-2-1.2L14.2 3h-4l-.4 2.7a7 7 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5A7 7 0 0 0 5.1 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 2 1.2L9.8 21h4l.4-2.7a7 7 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>
           <span>Configuración</span>
@@ -53,8 +57,8 @@
             <input id="buscador-venta" type="text" autocomplete="off" spellcheck="false"
                    placeholder="Escaneá o escribí el código / nombre del producto..." autofocus>
             <button id="btn-agregar-lista" class="btn btn-ghost" type="button" title="Agregar a la lista">+ Agregar listado</button>
+            <div id="sugerencias" class="sugerencias oculto"></div>
           </div>
-          <div id="sugerencias" class="sugerencias oculto"></div>
           <div class="clock" id="clock"></div>
         </header>
 
@@ -128,7 +132,7 @@
             <table class="tabla" id="tabla-productos">
               <thead>
                 <tr>
-                  <th>Código</th><th>Nombre</th><th>Categoría</th>
+                  <th>Código</th><th>Nombre</th><th>Marca</th><th>Categoría</th>
                   <th class="num">Precio</th><th class="num">Costo</th>
                   <th class="num">Stock</th><th class="num">Mínimo</th><th>Estado</th><th></th>
                 </tr>
@@ -193,6 +197,85 @@
               <tbody id="historial-body"></tbody>
             </table>
             <div class="vacio oculto" id="historial-vacio">Sin ventas en el período.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ========== SECCION REPORTES ========== -->
+      <section id="seccion-reportes" class="seccion">
+        <header class="section-header simple">
+          <h1>Reportes de ventas</h1>
+          <div class="toolbar">
+            <select id="rep-tipo">
+              <option value="semana">Semanal (lun–dom)</option>
+              <option value="mes">Mensual</option>
+              <option value="rango">Personalizado</option>
+            </select>
+            <button id="rep-prev" class="btn" title="Período anterior">‹</button>
+            <button id="rep-hoy" class="btn">Actual</button>
+            <button id="rep-next" class="btn" title="Período siguiente">›</button>
+            <input id="rep-desde" type="date" class="oculto">
+            <input id="rep-hasta" type="date" class="oculto">
+            <span id="rep-label" class="rep-label"></span>
+            <button id="rep-pdf" class="btn btn-primary">Exportar PDF</button>
+          </div>
+        </header>
+
+        <div id="rep-resumen" class="rep-resumen"></div>
+
+        <div class="rep-grid-2">
+          <div class="panel rep-panel">
+            <h2>Ventas por día</h2>
+            <div id="rep-chart" class="rep-chart"></div>
+          </div>
+          <div class="panel rep-panel">
+            <h2>Días más vendidos</h2>
+            <div id="rep-dias"></div>
+          </div>
+        </div>
+
+        <div class="rep-grid-2">
+          <div class="panel">
+            <div class="panel-titulo"><h2>Top productos por facturación</h2></div>
+            <div class="tabla-scroll">
+              <table class="tabla">
+                <thead><tr><th>Producto</th><th>Marca</th><th class="num">Un.</th><th class="num">Facturado</th><th class="num">Utilidad</th></tr></thead>
+                <tbody id="rep-topfac-body"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-titulo"><h2>Top productos por unidades</h2></div>
+            <div class="tabla-scroll">
+              <table class="tabla">
+                <thead><tr><th>Producto</th><th>Marca</th><th class="num">Un.</th><th class="num">Facturado</th></tr></thead>
+                <tbody id="rep-topuni-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="rep-grid-3">
+          <div class="panel">
+            <div class="panel-titulo"><h2>Por marca</h2></div>
+            <table class="tabla">
+              <thead><tr><th>Marca</th><th class="num">Un.</th><th class="num">Facturado</th></tr></thead>
+              <tbody id="rep-marcas-body"></tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <div class="panel-titulo"><h2>Por categoría</h2></div>
+            <table class="tabla">
+              <thead><tr><th>Categoría</th><th class="num">Un.</th><th class="num">Facturado</th></tr></thead>
+              <tbody id="rep-categorias-body"></tbody>
+            </table>
+          </div>
+          <div class="panel">
+            <div class="panel-titulo"><h2>Por método de pago</h2></div>
+            <table class="tabla">
+              <thead><tr><th>Método</th><th class="num">Ventas</th><th class="num">Facturado</th></tr></thead>
+              <tbody id="rep-metodos-body"></tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -332,11 +415,12 @@
           <label>Categoría
             <input id="p-categoria" type="text" list="lista-categorias" autocomplete="off">
           </label>
-          <label>Stock inicial / actual
-            <input id="p-stock" type="number" step="0.001" min="0">
+          <label>Marca
+            <input id="p-marca" type="text" list="lista-marcas" autocomplete="off">
           </label>
         </div>
         <datalist id="lista-categorias"></datalist>
+        <datalist id="lista-marcas"></datalist>
         <div class="campo-2">
           <label>Precio de venta
             <input id="p-precio" type="number" step="0.01" min="0" placeholder="0,00">
@@ -346,16 +430,19 @@
           </label>
         </div>
         <div class="campo-2">
+          <label>Stock inicial / actual
+            <input id="p-stock" type="number" step="0.001" min="0">
+          </label>
           <label>Stock mínimo (alerta)
             <input id="p-stock-minimo" type="number" step="0.001" min="0">
           </label>
-          <label>Estado
-            <select id="p-activo">
-              <option value="1">Activo (se vende)</option>
-              <option value="0">Inactivo (no se vende)</option>
-            </select>
-          </label>
         </div>
+        <label class="campo-ancho">Estado
+          <select id="p-activo">
+            <option value="1">Activo (se vende)</option>
+            <option value="0">Inactivo (no se vende)</option>
+          </select>
+        </label>
       </div>
       <footer class="modal-footer">
         <button class="btn btn-flat" data-cerrar="modal-producto">Cancelar</button>
@@ -479,6 +566,7 @@
   <script src="js/productos.js"></script>
   <script src="js/stock.js"></script>
   <script src="js/historial.js"></script>
+  <script src="js/reportes.js"></script>
   <script src="js/configuracion.js"></script>
 </body>
 </html>
