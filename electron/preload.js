@@ -43,6 +43,9 @@ const api = {
   },
   app: {
     info: () => invoke('app:info')
+  },
+  dialog: {
+    openFolder: () => invoke('dialog:openFolder')
   }
 }
 

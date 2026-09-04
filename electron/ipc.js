@@ -1,6 +1,6 @@
 'use strict'
 
-const { ipcMain, BrowserWindow, dialog } = require('electron')
+const { ipcMain, BrowserWindow, dialog, app } = require('electron')
 const store = require('./store.js')
 const backup = require('./backup.js')
 const ticket = require('./printer/ticket.js')
@@ -136,6 +136,16 @@ function registrarIpc (ctx) {
     dbPath: db.name,
     plataforma: process.platform
   })))
+
+  // ---- Folder picker ----
+  ipcMain.handle('dialog:openFolder', async () => {
+    const win = BrowserWindow.getFocusedWindow()
+    const result = await dialog.showOpenDialog(win || BrowserWindow.getAllWindows()[0] || null, {
+      properties: ['openDirectory']
+    })
+    if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true }
+    return { ok: true, path: result.filePaths[0] }
+  })
 }
 
 async function imprimirComoSistema (html) {

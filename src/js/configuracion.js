@@ -12,6 +12,7 @@ function initConfiguracion () {
   $('#btn-guardar-config').addEventListener('click', guardarConfig)
   $('#btn-probar-impresora').addEventListener('click', probarImpresora)
   $('#btn-backup-ahora').addEventListener('click', backupAhora)
+  $('#btn-buscar-carpeta').addEventListener('click', buscarCarpeta)
 
   const conexion = $('[name="imp_tipo_conexion"]')
   const actualizarCamposConexion = () => {
@@ -19,6 +20,8 @@ function initConfiguracion () {
     $('.campo-serie').classList.toggle('oculto', conexion.value !== 'serie')
   }
   conexion.addEventListener('change', actualizarCamposConexion)
+
+  $('#form-config').addEventListener('submit', (e) => e.preventDefault())
 
   cargarConfigForm()
   cargarInfoSistema()
@@ -45,11 +48,14 @@ function guardarConfig () {
     if (el.type === 'checkbox') datos[nombre] = el.checked ? '1' : '0'
     else datos[nombre] = String(el.value).trim()
   }
-  window.api.settings.setMany(datos).then(r => {
-    if (!r.ok) return toast(r.error, 'error')
+  return window.api.settings.setMany(datos).then(r => {
+    if (!r.ok) {
+      toast(r.error, 'error')
+      throw new Error(r.error)
+    }
     App.settings = r.datos
     actualizarMarca()
-    toast('Configuración guardada ✓')
+    return r.datos
   })
 }
 
@@ -71,6 +77,15 @@ async function probarImpresora () {
 }
 
 async function backupAhora () {
+  const carpeta = $('[name="backup_carpeta"]')
+  if (!String(carpeta.value).trim()) {
+    toast('Primero configurá la carpeta de destino del backup', 'error')
+    carpeta.focus()
+    return
+  }
+  try {
+    await guardarConfig()
+  } catch (_) { return }
   const r = await window.api.backup.ahora()
   if (r.ok && r.datos.ok) {
     toast(`Backup hecho: ${r.datos.archivo.split(/[\\/]/).pop()}`)
@@ -78,6 +93,12 @@ async function backupAhora () {
     toast(r.ok ? r.datos.error : r.error, 'error')
   }
   cargarEstadoBackup()
+}
+
+async function buscarCarpeta () {
+  const r = await window.api.dialog.openFolder()
+  if (!r.ok) return
+  $('[name="backup_carpeta"]').value = r.datos.path || ''
 }
 
 async function cargarEstadoBackup () {

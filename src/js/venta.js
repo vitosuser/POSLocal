@@ -8,8 +8,6 @@ const Venta = {
 }
 
 // espera el "burst" del escaner antes de decidir si es un codigo completo
-const SCAN_DEBOUNCE_MS = 100
-let scanTimer = null
 let sugerenciasLista = []
 let sugerenciaIdx = 0
 
@@ -23,7 +21,6 @@ function initVenta () {
     if (e.key === 'Escape') { ocultarSugerencias(); return }
     if (e.key === 'Enter') {
       e.preventDefault()
-      clearTimeout(scanTimer)
       const activa = sugerenciaActiva()
       if (!$('#sugerencias').classList.contains('oculto') && activa) {
         agregar(activa)
@@ -36,9 +33,8 @@ function initVenta () {
 
   input.addEventListener('input', () => {
     const valor = input.value.trim()
-    clearTimeout(scanTimer)
     if (!valor) { ocultarSugerencias(); return }
-    scanTimer = setTimeout(() => procesarEntradaSinEnter(valor), SCAN_DEBOUNCE_MS)
+    buscarEnCache(valor).then(l => l.length ? mostrarSugerencias(l) : ocultarSugerencias())
   })
 
   btnNuevo.addEventListener('click', () => abrirModalProducto())
@@ -82,20 +78,6 @@ function initVenta () {
 
 // ---------- entrada (escanear / escribir) ----------
 
-// se ejecuta cuando el tipeo se detiene: codigo exacto agrega solo,
-// si no muestra sugerencias para elegir
-function procesarEntradaSinEnter (valor) {
-  if (!valor) return
-  const exacto = App.productosCache.find(p => String(p.codigo_barras) === valor)
-  if (exacto) {
-    if (!exacto.activo) toast(`"${exacto.nombre}" está desactivado`, 'error')
-    else agregar(exacto)
-    limpiarBuscador()
-    return
-  }
-  buscarEnCache(valor).then(l => l.length ? mostrarSugerencias(l) : ocultarSugerencias())
-}
-
 function limpiarBuscador () {
   const input = $('#buscador-venta')
   input.value = ''
@@ -104,7 +86,6 @@ function limpiarBuscador () {
 }
 
 async function manejarEntrada (valor) {
-  clearTimeout(scanTimer)
   ocultarSugerencias()
   if (!valor) return
   const input = $('#buscador-venta')
@@ -379,7 +360,6 @@ async function confirmarCobro () {
     }
   } finally {
     btn.disabled = false
-    setTimeout(() => $('#buscador-venta').focus(), 30)
   }
 }
 

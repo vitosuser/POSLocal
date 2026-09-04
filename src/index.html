@@ -285,7 +285,7 @@
         <header class="section-header simple">
           <h1>Configuración</h1>
           <div class="toolbar">
-            <button id="btn-guardar-config" class="btn btn-primary">Guardar cambios</button>
+            <button id="btn-guardar-config" type="button" class="btn btn-primary">Guardar cambios</button>
           </div>
         </header>
 
@@ -370,7 +370,10 @@
                la base automáticamente. Es la forma más simple y segura para una sola PC.</p>
             <label class="check"><input name="backup_activado" type="checkbox" value="1"> <span>Activar backup automático</span></label>
             <label>Carpeta destino
-              <input name="backup_carpeta" type="text" placeholder="C:\Users\tu\Dropbox\VitPosBackup">
+              <div style="display:flex;gap:6px;align-items:center">
+                <input name="backup_carpeta" type="text" placeholder="C:\Users\tu\Dropbox\VitPosBackup" style="flex:1">
+                <button type="button" id="btn-buscar-carpeta" class="btn btn-flat">Buscar…</button>
+              </div>
             </label>
             <label>Frecuencia
               <select name="backup_frecuencia">

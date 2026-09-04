@@ -128,8 +128,6 @@ async function cargarApp () {
 
 function tocarEnter (document, kw, input) {
   input.dispatchEvent(new kw.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
-  input.dispatchEvent(new kw.Event('input', { bubbles: true }))
-  input.dispatchEvent(new kw.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
 }
 
 test('la app carga sin errores y renderiza los datos', async () => {
@@ -155,7 +153,7 @@ test('agregar producto al carrito desde el buscador', async () => {
     await new Promise(r => setTimeout(r, 150))
     const filas = document.querySelectorAll('#carrito-body tr')
     assert.ok(filas.length >= 1, `carrito sin filas: ${filas.length}`)
-    assert.match(document.querySelector('#total-carrito').textContent, /300,00/)
+    assert.match(document.querySelector('#total-carrito').textContent, /150,00/)
     assert.equal(document.querySelector('#btn-cobrar').disabled, false)
   } finally { dom.window.close() }
 })
@@ -171,20 +169,23 @@ test('agregar varias unidades suma total', async () => {
     assert.ok(mas, 'botón + no presente')
     mas.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
     await new Promise(r => setTimeout(r, 20))
-    assert.match(document.querySelector('#total-carrito').textContent, /450,00/)
+    assert.match(document.querySelector('#total-carrito').textContent, /300,00/)
   } finally { dom.window.close() }
 })
 
-test('codigo completo se agrega solo, sin Enter', async () => {
+test('escribir un codigo completo solo muestra sugerencias, sin auto-agregar', async () => {
   const { dom, document, kw } = await cargarApp()
   try {
     const input = document.querySelector('#buscador-venta')
     input.value = '7790001'
     input.dispatchEvent(new kw.Event('input', { bubbles: true }))
-    await new Promise(r => setTimeout(r, 300)) // > debounce de escaneo
-    assert.equal(document.querySelectorAll('#carrito-body tr').length, 1)
-    assert.match(document.querySelector('#total-carrito').textContent, /150,00/)
-    assert.equal(input.value, '', 'el buscador debe quedar limpio')
+    await new Promise(r => setTimeout(r, 80))
+    // no se agrega automaticamente: el carrito queda vacio
+    assert.equal(document.querySelectorAll('#carrito-body tr').length, 0)
+    assert.equal(input.value, '7790001', 'el input conserva el texto')
+    // si aparecen sugerencias parciales
+    const caja = document.querySelector('#sugerencias')
+    assert.equal(caja.classList.contains('oculto'), false, 'deben aparecer sugerencias')
   } finally { dom.window.close() }
 })
 
@@ -207,12 +208,35 @@ test('sugerencias por nombre navegables con teclado', async () => {
   } finally { dom.window.close() }
 })
 
-test('tipear fuera del campo enfoca el buscador de venta', async () => {
+test('el escaner con Enter agrega el producto al carrito', async () => {
   const { dom, document, kw } = await cargarApp()
   try {
-    assert.notEqual(document.activeElement, document.querySelector('#buscador-venta'))
-    document.body.dispatchEvent(new kw.KeyboardEvent('keydown', { key: 'x', bubbles: true, cancelable: true }))
-    assert.equal(document.activeElement, document.querySelector('#buscador-venta'))
+    const input = document.querySelector('#buscador-venta')
+    input.value = '7790001'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(document.querySelectorAll('#carrito-body tr').length, 1)
+    assert.match(document.querySelector('#total-carrito').textContent, /150,00/)
+    assert.equal(input.value, '', 'el buscador queda limpio tras agregar')
+  } finally { dom.window.close() }
+})
+
+test('tipear en otros inputs no roba el foco al buscador de venta', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    document.querySelector('.nav-item[data-seccion="productos"]').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    const buscadorProductos = document.querySelector('#buscar-productos')
+    assert.ok(buscadorProductos, 'input de productos presente')
+    // el usuario ya esta escribiendo en el input de productos
+    buscadorProductos.focus()
+    const ev = new kw.KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true })
+    buscadorProductos.dispatchEvent(ev)
+    assert.equal(document.activeElement, buscadorProductos, 'el foco no se mueve al escribir en otro input')
+    // el buscador de venta no recibe el texto ni roba el foco
+    const buscadorVenta = document.querySelector('#buscador-venta')
+    assert.equal(buscadorVenta.value, '', 'el buscador de venta queda intacto')
+    assert.notEqual(document.activeElement, buscadorVenta)
   } finally { dom.window.close() }
 })
 
@@ -232,8 +256,8 @@ test('el carrito sobrevive la navegacion entre secciones', async () => {
   try {
     const input = document.querySelector('#buscador-venta')
     input.value = '7790001'
-    input.dispatchEvent(new kw.Event('input', { bubbles: true }))
-    await new Promise(r => setTimeout(r, 300))
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 80))
     document.querySelector('.nav-item[data-seccion="stock"]').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
     await new Promise(r => setTimeout(r, 60))
     document.querySelector('.nav-item[data-seccion="venta"]').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))

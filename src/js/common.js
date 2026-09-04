@@ -59,6 +59,8 @@ function esCampoEditable (el) {
 
 function refocusVenta () {
   if (App.seccionActual !== 'venta' || hayModalAbierto()) return
+  // no robar foco si el usuario ya está en un campo editable
+  if (esCampoEditable(document.activeElement)) return
   setTimeout(() => {
     const b = $('#buscador-venta')
     if (b) b.focus()
@@ -134,7 +136,7 @@ function initCommon () {
     if (e.target === m) { m.classList.add('oculto'); refocusVenta() }
   }))
   // lo que se tipea fuera de un campo va derecho al buscador de venta
-  window.addEventListener('keydown', capturaTeclasGlobales, true)
+  window.addEventListener('keydown', capturaTeclasGlobales)
   reloj()
   setInterval(reloj, 1000)
 }
@@ -143,18 +145,14 @@ function capturaTeclasGlobales (e) {
   if (App.seccionActual !== 'venta') return
   if (hayModalAbierto()) return
   const t = e.target
+  // no intervenir si ya se esta escribiendo en algun campo editable
   if (esCampoEditable(t)) return
-  // no robar el Enter/Espacio a los botones
+  // no robar Enter/Espacio a los botones
   if ((e.key === 'Enter' || e.key === ' ') && t && t.tagName === 'BUTTON') return
   const buscador = $('#buscador-venta')
   if (!buscador) return
+  if (e.key === 'Backspace') { e.preventDefault(); buscador.focus(); return }
   if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    buscador.focus()
-  } else if (e.key === 'Enter' && document.activeElement !== buscador) {
-    e.preventDefault()
-    buscador.focus()
-    buscador.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }))
-  } else if (e.key === 'Backspace') {
     buscador.focus()
   }
 }
