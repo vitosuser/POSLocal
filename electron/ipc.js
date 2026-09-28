@@ -31,7 +31,8 @@ function registrarIpc (ctx) {
       settings, ventaId: venta.id, fecha: venta.fecha_hora,
       operador: venta.operador, items: venta.items,
       subtotal: venta.subtotal, descuento: venta.descuento, total: venta.total,
-      recibido: venta.recibido, cambio: venta.cambio, metodo_pago: venta.metodo_pago
+      recibido: venta.recibido, cambio: venta.cambio, metodo_pago: venta.metodo_pago,
+      es_fiado: venta.es_fiado, fiador_dni: venta.deudor_dni ?? venta.fiador_dni, deudor_dni: venta.deudor_dni ?? venta.fiador_dni, monto_fiado: venta.monto_fiado
     }
 
     try {
@@ -71,6 +72,19 @@ function registrarIpc (ctx) {
   // ---- Stock ----
   ipcMain.handle('stock:adjust', conOK((d) => store.ajustarStock(db, d || {})))
   ipcMain.handle('stock:movimientos', conOK((d) => store.movimientosStock(db, d && d.codigo_barras, d && d.limite)))
+
+  // ---- Deudores ----
+  ipcMain.handle('deudores:list', conOK((f) => store.listarDeudores(db, f || {})))
+  ipcMain.handle('deudores:get', conOK((dni) => store.obtenerDeudor(db, dni)))
+  ipcMain.handle('deudores:save', conOK((f) => store.guardarDeudor(db, f || {})))
+  ipcMain.handle('deudores:remove', conOK((dni) => store.eliminarDeudor(db, dni)))
+  ipcMain.handle('deudores:pago', conOK((d) => store.registrarPagoDeudor(db, d || {})))
+
+  // ---- Proveedores ----
+  ipcMain.handle('proveedores:list', conOK(() => store.listarProveedores(db)))
+  ipcMain.handle('proveedores:get', conOK((id) => store.obtenerProveedor(db, id)))
+  ipcMain.handle('proveedores:save', conOK((p) => store.guardarProveedor(db, p || {})))
+  ipcMain.handle('proveedores:remove', conOK((id) => store.eliminarProveedor(db, id)))
 
   // ---- Settings ----
   ipcMain.handle('settings:getAll', conOK(() => store.obtenerSettings(db)))

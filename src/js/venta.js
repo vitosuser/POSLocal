@@ -71,7 +71,19 @@ function initVenta () {
   $('#c-metodo-pago').value = Venta.metodoSeleccionado
   $('#c-recibido').addEventListener('input', recalcularCambio)
   $('#c-descuento').addEventListener('input', recalcularCambio)
+  const tipoDesc = $('#c-descuento-tipo')
+  if (tipoDesc) tipoDesc.addEventListener('change', recalcularCambio)
   $('#btn-confirmar-cobro').addEventListener('click', confirmarCobro)
+  const chkFiado = $('#c-es-fiado')
+  if (chkFiado) chkFiado.addEventListener('change', () => {
+    $('#fiado-campos').classList.toggle('oculto', !chkFiado.checked)
+    if (chkFiado.checked) cargarDeudoresCobro()
+    recalcularCambio()
+  })
+  const btnNuevoDeudor = $('#btn-deudor-nuevo')
+  if (btnNuevoDeudor) btnNuevoDeudor.addEventListener('click', () => {
+    $('#fiado-nuevo').classList.toggle('oculto')
+  })
 
   actualizarVentasDelDia()
 }
@@ -282,13 +294,32 @@ function totalCarrito () {
   return t
 }
 
+async function cargarDeudoresCobro () {
+  const sel = $('#c-deudor')
+  if (!sel) return
+  if (!window.api.deudores) { sel.innerHTML = '<option value="">(sin módulo de deudores)</option>'; return }
+  const r = await window.api.deudores.listar()
+  if (!r.ok) { sel.innerHTML = '<option value="">Error al cargar deudores</option>'; return }
+  const lista = r.datos || []
+  sel.innerHTML = lista.length
+    ? lista.map(f => `<option value="${esc(f.dni)}">${esc(f.nombre)} (${esc(f.dni)}) — debe ${fmtMoneda(f.deuda)}</option>`).join('')
+    : '<option value="">(sin deudores, creá uno nuevo)</option>'
+  recalcularCambio()
+}
+
 function abrirCobro () {
   if (!Venta.carrito.size) return
   const total = totalCarrito()
   $('#modal-total').textContent = fmtMoneda(total)
   $('#c-metodo-pago').value = Venta.metodoSeleccionado
   $('#c-descuento').value = ''
+  const tipoDesc = $('#c-descuento-tipo')
+  if (tipoDesc) tipoDesc.value = 'monto'
   $('#c-recibido').value = String(total / 100)
+  const chk = $('#c-es-fiado')
+  if (chk) { chk.checked = false; $('#fiado-campos').classList.add('oculto') }
+  const fn = $('#fiado-nuevo')
+  if (fn) { fn.classList.add('oculto'); $('#c-deudor-dni').value = ''; $('#c-deudor-nombre').value = ''; $('#c-deudor-nota').value = '' }
   recalcularCambio()
   $('#cobro-rapido').innerHTML = ''
   const rapidos = calcRapidos(total)
@@ -315,13 +346,41 @@ function calcRapidos (total) {
   return Array.from(set).slice(0, 5)
 }
 
+function calcDescuento () {
+  const total = totalCarrito()
+  const tipo = ($('#c-descuento-tipo') || {}).value || 'monto'
+  const raw = Number($('#c-descuento').value)
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  if (tipo === 'porcentaje') {
+    const pct = Math.min(100, raw)
+    return Math.min(total, Math.round((total * pct) / 100))
+  }
+  return Math.min(total, aCentavos(raw))
+}
+
 function recalcularCambio () {
   const total = totalCarrito()
-  const desc = aCentavos($('#c-descuento').value)
+  const desc = calcDescuento()
   const rec = aCentavos($('#c-recibido').value)
   const neto = Math.max(0, total - desc)
   const cambio = rec - neto
   $('#c-cambio').textContent = fmtMoneda(cambio < 0 ? 0 : cambio)
+  const info = $('#fiado-info')
+  if (info) {
+    const chk = $('#c-es-fiado')
+    if (chk && chk.checked) {
+      const falta = Math.max(0, neto - rec)
+      info.textContent = falta > 0
+        ? `A cuenta del deudor: ${fmtMoneda(falta)}`
+        : 'El dinero entregado ya cubre el total (desmarcá el fiado).'
+    } else if (cambio < 0) {
+      info.textContent = ''
+      const box = $('#fiado-box')
+      if (box) box.style.outline = ''
+    } else if (info) {
+      info.textContent = ''
+    }
+  }
 }
 
 async function confirmarCobro () {
@@ -330,11 +389,42 @@ async function confirmarCobro () {
   try {
     const items = []
     Venta.carrito.forEach((item, codigo) => items.push({ codigo, cantidad: item.cantidad }))
+    const descuento = calcDescuento()
+    const recibido = aCentavos($('#c-recibido').value)
+    const chk = $('#c-es-fiado')
+    const esFiado = !!(chk && chk.checked)
+
+    let deudorDni = ''
+    if (esFiado) {
+      const total = totalCarrito()
+      const neto = Math.max(0, total - descuento)
+      const falta = Math.max(0, neto - recibido)
+      if (falta <= 0) { toast('El fiado no aplica: el dinero entregado ya cubre el total', 'error'); return }
+      // alta rápida de deudor si se completaron los campos
+      const dniNuevo = ($('#c-deudor-dni').value || '').trim()
+      const nomNuevo = ($('#c-deudor-nombre').value || '').trim()
+      if (dniNuevo && nomNuevo) {
+        if (!window.api.deudores) { toast('Módulo de deudores no disponible', 'error'); return }
+        const g = await window.api.deudores.guardar({
+          dni: dniNuevo, nombre: nomNuevo, nota: ($('#c-deudor-nota').value || '').trim()
+        })
+        if (!g.ok) { toast(g.error, 'error'); return }
+        await cargarDeudoresCobro()
+        $('#c-deudor').value = dniNuevo
+        $('#fiado-nuevo').classList.add('oculto')
+        $('#c-deudor-dni').value = ''; $('#c-deudor-nombre').value = ''; $('#c-deudor-nota').value = ''
+      }
+      deudorDni = ($('#c-deudor').value || '').trim()
+      if (!deudorDni) { toast('Seleccioná un deudor o creá uno nuevo', 'error'); return }
+    }
+
     const r = await window.api.ventas.crear({
       items,
       metodo_pago: $('#c-metodo-pago').value,
-      descuento: aCentavos($('#c-descuento').value),
-      recibido: aCentavos($('#c-recibido').value)
+      descuento,
+      recibido,
+      es_fiado: esFiado,
+      deudor_dni: deudorDni
     })
     if (!r.ok) { toast(r.error, 'error'); return }
 
@@ -355,9 +445,13 @@ async function confirmarCobro () {
       $('#cambio-venta-id').textContent = r.datos.ventaId
       $('#cambio-resultado').textContent = fmtMoneda(r.datos.cambio)
       modalAbrir('modal-cambio')
+    } else if (r.datos.monto_fiado > 0) {
+      toast(`Venta N° ${r.datos.ventaId} a fiado ✓ (${fmtMoneda(r.datos.monto_fiado)} a cuenta)`)
     } else {
       toast(`Venta N° ${r.datos.ventaId} registrada ✓`)
     }
+  } catch (e) {
+    toast((e && e.message) || 'Error al confirmar la venta', 'error')
   } finally {
     btn.disabled = false
   }
@@ -385,11 +479,15 @@ async function actualizarVentasDelDia () {
 document.addEventListener('DOMContentLoaded', async () => {
   await cargarConfig()
   await cargarProductos()
+  if (typeof cargarDeudores === 'function') await cargarDeudores()
+  if (typeof cargarProveedores === 'function') await cargarProveedores()
   initCommon()
   initVenta()
   initProductos()
   initStock()
   initHistorial()
+  if (typeof initDeudores === 'function') initDeudores()
+  if (typeof initProveedores === 'function') initProveedores()
   initReportes()
   initConfiguracion()
 })

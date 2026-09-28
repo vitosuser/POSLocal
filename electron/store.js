@@ -50,6 +50,8 @@ function guardarProducto (db, datos) {
   const costo = centsValido(datos.costo, 'costo', existente ? existente.costo : 0)
   const stock = numValido(datos.stock, 'stock', existente ? existente.stock : 0)
   const stockMinimo = numValido(datos.stock_minimo, 'stock minimo', existente ? existente.stock_minimo : 0)
+  if (stock < 0) throw new Error('El stock no puede ser negativo')
+  if (stockMinimo < 0) throw new Error('El stock mínimo no puede ser negativo')
   const categoria = String(datos.categoria || '').trim()
   const marca = String(datos.marca || '').trim()
   const activo = datos.activo === false || datos.activo === 0 ? 0 : 1
@@ -71,7 +73,12 @@ function guardarProducto (db, datos) {
 function eliminarProducto (db, codigo) {
   const p = obtenerProducto(db, codigo)
   if (!p) throw new Error('Producto no encontrado')
-  db.prepare('DELETE FROM productos WHERE codigo_barras = ?').run(String(codigo).trim())
+  const cod = String(codigo).trim()
+  const conVentas = db.prepare('SELECT COUNT(*) AS n FROM ventas_items WHERE codigo_barras = ?').get(cod)
+  if (conVentas && Number(conVentas.n) > 0) {
+    throw new Error(`No se puede eliminar "${p.nombre}" porque tiene ventas asociadas. Desactívalo en su lugar.`)
+  }
+  db.prepare('DELETE FROM productos WHERE codigo_barras = ?').run(cod)
   return { ok: true }
 }
 
@@ -103,15 +110,32 @@ function crearVenta (db, datos) {
     const descuento = Math.min(Math.max(Math.round(Number(datos.descuento) || 0), 0), subtotal)
     const total = subtotal - descuento
     const metodo = String(datos.metodo_pago || '').trim() || 'Efectivo'
-    const recibido = Math.max(0, Math.round(Number(datos.recibido) || 0))
+    // compat: si no se indica recibido (tests viejos / API), asumir pago completo
+    const recibido = (datos.recibido === undefined || datos.recibido === null || datos.recibido === '')
+      ? total
+      : Math.max(0, Math.round(Number(datos.recibido) || 0))
     const cambio = Math.max(0, recibido - total)
     const operador = String(datos.operador || '').trim().slice(0, 80) || ''
 
+    // fiado opcional: total - recibido = monto a cuenta del deudor
+    const esFiado = datos.es_fiado === true || datos.es_fiado === 1 || datos.es_fiado === '1'
+    const deudorDni = String(datos.deudor_dni ?? datos.fiador_dni ?? '').trim()
+    let montoFiado = 0
+    if (esFiado) {
+      montoFiado = Math.max(0, total - recibido)
+      if (montoFiado <= 0) throw new Error('El fiado no aplica: el dinero entregado ya cubre el total')
+      if (!deudorDni) throw new Error('Seleccioná un deudor para registrar el fiado')
+      const deudor = obtenerDeudor(db, deudorDni)
+      if (!deudor) throw new Error(`Deudor no encontrado: ${deudorDni}`)
+    } else if (recibido < total) {
+      throw new Error(`Dinero insuficiente: faltan ${fmtMoneda(total - recibido)}. Activá el fiado o ajustá el monto entregado.`)
+    }
+
     // fecha opcional (para tests / importaciones); formato 'YYYY-MM-DD HH:MM:SS'
     const fecha = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(datos.fecha || '') ? datos.fecha : isoLocal()
-    const info = db.prepare(`INSERT INTO ventas (fecha_hora, subtotal, descuento, total, metodo_pago, recibido, cambio, estado, operador)
-                             VALUES (?,?,?,?,?,?,?,?,?)`)
-      .run(fecha, subtotal, descuento, total, metodo, recibido, cambio, 'completada', operador)
+    const info = db.prepare(`INSERT INTO ventas (fecha_hora, subtotal, descuento, total, metodo_pago, recibido, cambio, estado, operador, es_fiado, fiador_dni, deudor_dni, monto_fiado)
+                             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(fecha, subtotal, descuento, total, metodo, recibido, cambio, 'completada', operador, esFiado ? 1 : 0, esFiado ? deudorDni : '', esFiado ? deudorDni : '', montoFiado)
     const ventaId = Number(info.lastInsertRowid)
 
     const insItem = db.prepare(`INSERT INTO ventas_items (venta_id, codigo_barras, nombre, cantidad, precio_unitario, costo_unitario, total_linea)
@@ -126,7 +150,11 @@ function crearVenta (db, datos) {
       mov.run(f.p.codigo_barras, 'venta', f.cantidad, nuevo, '', fecha)
     }
 
-    return { ventaId, subtotal, descuento, total, cambio, metodo, fecha }
+    if (esFiado && montoFiado > 0) {
+      sumarDeudaDeudor(db, deudorDni, montoFiado)
+    }
+
+    return { ventaId, subtotal, descuento, total, cambio, metodo, fecha, es_fiado: esFiado ? 1 : 0, deudor_dni: esFiado ? deudorDni : '', fiador_dni: esFiado ? deudorDni : '', monto_fiado: montoFiado }
   })
 }
 
@@ -134,7 +162,24 @@ function obtenerVenta (db, id) {
   const venta = db.prepare('SELECT * FROM ventas WHERE id = ?').get(Number(id))
   if (!venta) return null
   venta.items = db.prepare('SELECT * FROM ventas_items WHERE venta_id = ? ORDER BY id').all(venta.id)
+  adjuntarNombresFiadores(db, [venta])
   return venta
+}
+
+function adjuntarNombresFiadores (db, ventas) {
+  const dnis = [...new Set((ventas || []).map(v => String(v.deudor_dni ?? v.fiador_dni ?? '').trim()).filter(Boolean))]
+  if (!dnis.length) {
+    for (const v of ventas || []) { v.deudor_nombre = ''; v.fiador_nombre = '' }
+    return
+  }
+  const placeholders = dnis.map(() => '?').join(',')
+  const filas = db.prepare(`SELECT dni, nombre FROM deudores WHERE dni IN (${placeholders})`).all(...dnis)
+  const mapa = new Map(filas.map(f => [String(f.dni), f.nombre]))
+  for (const v of ventas) {
+    const nombre = mapa.get(String(v.deudor_dni ?? v.fiador_dni ?? '').trim()) || ''
+    v.deudor_nombre = nombre
+    v.fiador_nombre = nombre
+  }
 }
 
 function listarVentas (db, { desde, hasta, estado } = {}) {
@@ -155,6 +200,7 @@ function listarVentas (db, { desde, hasta, estado } = {}) {
     porVenta.get(it.venta_id).push(it)
   }
   for (const v of ventas) v.items = porVenta.get(v.id) || []
+  adjuntarNombresFiadores(db, ventas)
   return ventas
 }
 
@@ -168,15 +214,20 @@ function anularVenta (db, id) {
     const getProd = db.prepare('SELECT stock FROM productos WHERE codigo_barras = ?')
     const updStock = db.prepare(`UPDATE productos SET stock = ?, actualizado_en = ? WHERE codigo_barras = ?`)
     const mov = db.prepare(`INSERT INTO stock_movimientos (codigo_barras, tipo, cantidad, stock_resultante, nota, fecha)
-                            VALUES (?,?,'anulacion',?,?,?)`)
+                            VALUES (?,?,?,?,?,?)`)
     const fecha = isoLocal()
     for (const it of items) {
       const prod = getProd.get(it.codigo_barras)
       if (prod) {
         const nuevo = Number((prod.stock + it.cantidad).toFixed(3))
         updStock.run(nuevo, isoLocal(), it.codigo_barras)
-        mov.run(it.codigo_barras, it.cantidad, nuevo, `Anulacion de venta N° ${venta.id}`, fecha)
+        mov.run(it.codigo_barras, 'anulacion', it.cantidad, nuevo, `Anulacion de venta N° ${venta.id}`, fecha)
       }
+    }
+    // si la venta era a fiado, descontar la deuda del deudor
+    const dniDeuda = venta.deudor_dni ?? venta.fiador_dni
+    if (Number(venta.es_fiado) === 1 && Number(venta.monto_fiado) > 0 && dniDeuda) {
+      restarDeudaDeudor(db, dniDeuda, Number(venta.monto_fiado))
     }
     db.prepare(`UPDATE ventas SET estado = 'anulada' WHERE id = ?`).run(venta.id)
     return { ok: true, venta: obtenerVenta(db, venta.id) }
@@ -222,6 +273,127 @@ function movimientosStock (db, codigo, limite = 100) {
       .all(String(codigo).trim(), Number(limite))
   }
   return db.prepare(`SELECT * FROM stock_movimientos ORDER BY id DESC LIMIT ?`).all(Number(limite))
+}
+
+// ---------------- Deudores ----------------
+
+function listarDeudores (db, { soloConDeuda = false } = {}) {
+  let sql = `SELECT * FROM deudores`
+  if (soloConDeuda) sql += ` WHERE debe = 1`
+  sql += ` ORDER BY debe DESC, nombre COLLATE NOCASE`
+  return db.prepare(sql).all()
+}
+
+function obtenerDeudor (db, dni) {
+  if (!dni) return undefined
+  return db.prepare('SELECT * FROM deudores WHERE dni = ?').get(String(dni).trim())
+}
+
+function guardarDeudor (db, datos) {
+  const dni = String(datos.dni || '').trim()
+  const nombre = String(datos.nombre || '').trim()
+  if (!dni) throw new Error('El DNI es obligatorio')
+  if (!nombre) throw new Error('El nombre es obligatorio')
+  const nota = String(datos.nota || '').trim().slice(0, 200)
+
+  const existente = obtenerDeudor(db, dni)
+  if (existente) {
+    db.prepare(`UPDATE deudores SET nombre=?, nota=?, actualizado_en=? WHERE dni=?`)
+      .run(nombre, nota, isoLocal(), dni)
+  } else {
+    db.prepare(`INSERT INTO deudores (dni, nombre, nota, deuda, debe) VALUES (?,?,?,?,?)`)
+      .run(dni, nombre, nota, 0, 0)
+  }
+  return obtenerDeudor(db, dni)
+}
+
+function eliminarDeudor (db, dni) {
+  const f = obtenerDeudor(db, dni)
+  if (!f) throw new Error('Deudor no encontrado')
+  if (Number(f.deuda) > 0) throw new Error(`No se puede eliminar "${f.nombre}" porque aún debe ${fmtMoneda(f.deuda)}`)
+  const conVentas = db.prepare(`SELECT COUNT(*) AS n FROM ventas WHERE (deudor_dni = ? OR fiador_dni = ?) AND estado = 'completada'`).get(String(dni).trim(), String(dni).trim())
+  if (conVentas && Number(conVentas.n) > 0) {
+    throw new Error(`No se puede eliminar "${f.nombre}" porque tiene ventas fiadas asociadas`)
+  }
+  db.prepare('DELETE FROM deudores WHERE dni = ?').run(String(dni).trim())
+  return { ok: true }
+}
+
+function sumarDeudaDeudor (db, dni, monto) {
+  const f = obtenerDeudor(db, dni)
+  if (!f) throw new Error(`Deudor no encontrado: ${dni}`)
+  const m = Math.round(Number(monto) || 0)
+  if (!(m > 0)) throw new Error('Monto de fiado inválido')
+  const nueva = Number(f.deuda) + m
+  db.prepare(`UPDATE deudores SET deuda=?, debe=1, actualizado_en=? WHERE dni=?`)
+    .run(nueva, isoLocal(), String(dni).trim())
+  return obtenerDeudor(db, dni)
+}
+
+function restarDeudaDeudor (db, dni, monto) {
+  const f = obtenerDeudor(db, dni)
+  if (!f) return null
+  const m = Math.round(Number(monto) || 0)
+  if (!(m > 0)) return f
+  const nueva = Math.max(0, Number(f.deuda) - m)
+  db.prepare(`UPDATE deudores SET deuda=?, debe=?, actualizado_en=? WHERE dni=?`)
+    .run(nueva, nueva > 0 ? 1 : 0, isoLocal(), String(dni).trim())
+  return obtenerDeudor(db, dni)
+}
+
+function registrarPagoDeudor (db, datos) {
+  const dni = String(datos.dni || '').trim()
+  const monto = Math.round(Number(datos.monto) || 0)
+  if (!dni) throw new Error('Falta el DNI del deudor')
+  if (!(monto > 0)) throw new Error('El monto del pago debe ser mayor a cero')
+  return transaccion(db, () => {
+    const f = obtenerDeudor(db, dni)
+    if (!f) throw new Error('Deudor no encontrado')
+    if (Number(f.deuda) <= 0) throw new Error(`"${f.nombre}" no tiene deuda pendiente`)
+    if (monto > Number(f.deuda)) throw new Error(`El pago supera la deuda (debe ${fmtMoneda(f.deuda)})`)
+    return restarDeudaDeudor(db, dni, monto)
+  })
+}
+
+// ---------------- Proveedores ----------------
+
+function listarProveedores (db) {
+  return db.prepare(`SELECT * FROM proveedores ORDER BY nombre COLLATE NOCASE`).all()
+}
+
+function obtenerProveedor (db, id) {
+  if (id === undefined || id === null || id === '') return undefined
+  return db.prepare('SELECT * FROM proveedores WHERE id = ?').get(Number(id))
+}
+
+function guardarProveedor (db, datos) {
+  const nombre = String(datos.nombre || '').trim()
+  if (!nombre) throw new Error('El nombre es obligatorio')
+  const rubro = String(datos.rubro || '').trim().slice(0, 80)
+  const contacto = String(datos.contacto || '').trim().slice(0, 120)
+  const nota = String(datos.nota || '').trim().slice(0, 200)
+
+  const id = datos.id === undefined || datos.id === null || datos.id === '' ? null : Number(datos.id)
+  if (id !== null) {
+    const existente = obtenerProveedor(db, id)
+    if (!existente) throw new Error('Proveedor no encontrado')
+    const rubro = datos.rubro === undefined || datos.rubro === null ? existente.rubro : String(datos.rubro).trim().slice(0, 80)
+    const contacto = datos.contacto === undefined || datos.contacto === null ? existente.contacto : String(datos.contacto).trim().slice(0, 120)
+    const nota = datos.nota === undefined || datos.nota === null ? existente.nota : String(datos.nota).trim().slice(0, 200)
+    db.prepare(`UPDATE proveedores SET nombre=?, rubro=?, contacto=?, nota=?, actualizado_en=? WHERE id=?`)
+      .run(nombre, rubro, contacto, nota, isoLocal(), id)
+    return obtenerProveedor(db, id)
+  }
+  const info = db.prepare(`INSERT INTO proveedores (nombre, rubro, contacto, nota) VALUES (?,?,?,?)`)
+    .run(nombre, rubro, contacto, nota)
+  return obtenerProveedor(db, Number(info.lastInsertRowid))
+}
+
+function eliminarProveedor (db, id) {
+  const p = obtenerProveedor(db, id)
+  if (!p) throw new Error('Proveedor no encontrado')
+  db.prepare('DELETE FROM proveedores WHERE id = ?').run(Number(id))
+  return { ok: true }
 }
 
 // ---------------- Settings ----------------
@@ -415,11 +587,17 @@ function fmtStock (n) {
   return String(Math.round(n * 1000) / 1000)
 }
 
+function fmtMoneda (cents) {
+  return `$ ${(Number(cents) / 100).toFixed(2)}`
+}
+
 module.exports = {
   transaccion,
   listarProductos, obtenerProducto, guardarProducto, eliminarProducto,
   crearVenta, obtenerVenta, listarVentas, anularVenta, totalesDelDia,
   ajustarStock, movimientosStock,
+  listarDeudores, obtenerDeudor, guardarDeudor, eliminarDeudor, registrarPagoDeudor,
+  listarProveedores, obtenerProveedor, guardarProveedor, eliminarProveedor,
   obtenerSettings, guardarSettings,
   generarReporte
 }

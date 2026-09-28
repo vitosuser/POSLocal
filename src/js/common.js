@@ -6,6 +6,8 @@ const $$ = (sel, el) => Array.from((el || document).querySelectorAll(sel))
 const App = {
   settings: {},
   productosCache: [],
+  deudoresCache: [],
+  proveedoresCache: [],
   seccionActual: 'venta'
 }
 
@@ -83,6 +85,12 @@ async function refrescarSeccion (nombre) {
       renderStock()
     } else if (nombre === 'historial') {
       buscarHistorial()
+    } else if (nombre === 'deudores') {
+      if (typeof cargarDeudores === 'function') await cargarDeudores()
+      if (typeof renderDeudores === 'function') renderDeudores()
+    } else if (nombre === 'proveedores') {
+      if (typeof cargarProveedores === 'function') await cargarProveedores()
+      if (typeof renderProveedores === 'function') renderProveedores()
     } else if (nombre === 'reportes') {
       if (typeof renderReportes === 'function') renderReportes()
     } else if (nombre === 'configuracion') {
@@ -127,6 +135,24 @@ async function cargarProductos () {
   const r = await window.api.productos.listar()
   if (r.ok) App.productosCache = r.datos
   return App.productosCache
+}
+
+async function cargarDeudores () {
+  if (typeof window !== 'undefined' && window.api && window.api.deudores) {
+    const r = await window.api.deudores.listar()
+    if (r.ok) App.deudoresCache = r.datos
+    return App.deudoresCache
+  }
+  return App.deudoresCache
+}
+
+async function cargarProveedores () {
+  if (typeof window !== 'undefined' && window.api && window.api.proveedores) {
+    const r = await window.api.proveedores.listar()
+    if (r.ok) App.proveedoresCache = r.datos
+    return App.proveedoresCache
+  }
+  return App.proveedoresCache
 }
 
 function initCommon () {

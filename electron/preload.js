@@ -24,6 +24,19 @@ const api = {
     ajustar: (datos) => invoke('stock:adjust', datos),
     movimientos: (datos) => invoke('stock:movimientos', datos)
   },
+  deudores: {
+    listar: (filtro) => invoke('deudores:list', filtro),
+    obtener: (dni) => invoke('deudores:get', dni),
+    guardar: (deudor) => invoke('deudores:save', deudor),
+    eliminar: (dni) => invoke('deudores:remove', dni),
+    pago: (datos) => invoke('deudores:pago', datos)
+  },
+  proveedores: {
+    listar: () => invoke('proveedores:list'),
+    obtener: (id) => invoke('proveedores:get', id),
+    guardar: (proveedor) => invoke('proveedores:save', proveedor),
+    eliminar: (id) => invoke('proveedores:remove', id)
+  },
   settings: {
     getAll: () => invoke('settings:getAll'),
     setMany: (datos) => invoke('settings:setMany', datos)

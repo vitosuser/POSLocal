@@ -77,11 +77,24 @@ function crearApi () {
       eliminar: async () => ({ ok: true, datos: { ok: true } })
     },
     ventas: {
-      crear: async (d) => ({ ok: true, datos: { ventaId: 42, cambio: 0, total: d.total } }),
+      crear: async (d) => ({ ok: true, datos: { ventaId: 42, cambio: 0, monto_fiado: 0, total: d.total } }),
       listar: async () => ({ ok: true, datos: [] }),
       detalle: async () => ({ ok: true, datos: null }),
       anular: async () => ({ ok: true, datos: { ok: true } }),
       totales: async () => ({ ok: true, datos: { cantidad: 0, total: 0, porMetodo: {} } })
+    },
+    deudores: {
+      listar: async () => ({ ok: true, datos: [] }),
+      obtener: async () => ({ ok: true, datos: null }),
+      guardar: async (f) => ({ ok: true, datos: f }),
+      eliminar: async () => ({ ok: true, datos: { ok: true } }),
+      pago: async () => ({ ok: true, datos: {} })
+    },
+    proveedores: {
+      listar: async () => ({ ok: true, datos: [] }),
+      obtener: async () => ({ ok: true, datos: null }),
+      guardar: async (p) => ({ ok: true, datos: { id: 1, ...p } }),
+      eliminar: async () => ({ ok: true, datos: { ok: true } })
     },
     stock: {
       ajustar: async () => ({ ok: true, datos: { stock: 5 } }),
@@ -361,5 +374,57 @@ test('cambiar a mensual y exportar pdf llaman a la api', async () => {
     document.querySelector('#rep-pdf').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
     await new Promise(r => setTimeout(r, 80))
     assert.equal(api.__contadores.exportarPdf, 1)
+  } finally { dom.window.close() }
+})
+
+test('el cobro permite descuento en monto o porcentaje', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const input = document.querySelector('#buscador-venta')
+    input.value = '7790001'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 80))
+    document.querySelector('#btn-cobrar').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    const tipo = document.querySelector('#c-descuento-tipo')
+    assert.ok(tipo, 'falta el combo de tipo de descuento')
+    assert.equal(tipo.value, 'monto')
+    // 10% de 15000 = 1500 de descuento -> neto 13500, recibido exacto 15000 -> cambio 1500
+    document.querySelector('#c-descuento').value = '10'
+    tipo.value = 'porcentaje'
+    tipo.dispatchEvent(new kw.Event('change', { bubbles: true }))
+    document.querySelector('#c-recibido').value = '150'
+    document.querySelector('#c-recibido').dispatchEvent(new kw.Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.match(document.querySelector('#c-cambio').textContent, /15,00/)
+  } finally { dom.window.close() }
+})
+
+test('la seccion deudores existe y renderiza', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const nav = document.querySelector('.nav-item[data-seccion="deudores"]')
+    assert.ok(nav, 'falta el item Deudores en el lateral')
+    nav.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 100))
+    assert.equal(document.querySelector('.seccion.activa').id, 'seccion-deudores')
+    assert.ok(document.querySelector('#btn-nuevo-deudor'), 'falta boton nuevo deudor')
+    assert.ok(document.querySelector('#deudores-body'), 'falta tabla de deudores')
+    assert.ok(document.querySelector('#modal-deudor'), 'falta modal de deudor')
+    assert.ok(document.querySelector('#modal-pago-deudor'), 'falta modal de pago')
+  } finally { dom.window.close() }
+})
+
+test('la seccion proveedores existe y renderiza', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const nav = document.querySelector('.nav-item[data-seccion="proveedores"]')
+    assert.ok(nav, 'falta el item Proveedores en el lateral')
+    nav.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 100))
+    assert.equal(document.querySelector('.seccion.activa').id, 'seccion-proveedores')
+    assert.ok(document.querySelector('#btn-nuevo-proveedor'), 'falta boton nuevo proveedor')
+    assert.ok(document.querySelector('#proveedores-body'), 'falta tabla de proveedores')
+    assert.ok(document.querySelector('#modal-proveedor'), 'falta modal de proveedor')
   } finally { dom.window.close() }
 })

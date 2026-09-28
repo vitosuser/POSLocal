@@ -11,12 +11,13 @@ function txt (s) { return Buffer.from(normalizar(String(s)), 'ascii') }
 function linea (s, nl = true) { return Buffer.concat([txt(s), nl ? Buffer.from([0x0a]) : Buffer.alloc(0)]) }
 
 function normalizar (s) {
-  const mapa = {
-    á: 'a', é: 'e', í: 'i', ó: 'o', ú: 'u', ñ: 'n',
-    Á: 'A', É: 'E', Í: 'I', Ó: 'O', Ú: 'U', Ñ: 'N',
-    ü: 'u', Ü: 'U', 'º': ' ', '°': ' ', 'ª': ' '
-  }
-  return s.replace(/[áéíóúñÁÉÍÓÚÑüÜº°ª]/g, (c) => mapa[c] || c)
+  return String(s)
+    .replace(/[ñ]/g, 'n')
+    .replace(/[Ñ]/g, 'N')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[º°ª]/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '?')
 }
 
 function anchoEnCaracteres (anchoMm) {
@@ -51,7 +52,8 @@ function separador (w, c = '=') { return linea(chars(w, c)) }
 function enBlanco (n = 1) { return cmd(new Array(n * 3).fill(0x00)) }
 
 function lineaItem (nombre, cantidad, pu, total, w) {
-  const out = [linea(nombre)]
+  const nombreCorto = String(nombre).length > w ? String(nombre).slice(0, w) : String(nombre)
+  const out = [linea(nombreCorto)]
   const unaUnidad = cantidad === 1 || cantidad === 1.0
   let der = unaUnidad ? moneda(total, '') : `${cantidad} x ${moneda(pu, '')} = ${moneda(total, '')}`
   der = der.trim()
@@ -96,6 +98,10 @@ function ticketVenta (datos) {
     partes.push(linea(padDerecha(`Cambio: ${moneda(datos.cambio, simbolo)}`, w)))
   }
   partes.push(linea(`Metodo: ${datos.metodo_pago}`))
+  if (datos.es_fiado || datos.monto_fiado > 0 || datos.deudor_dni || datos.fiador_dni) {
+    partes.push(linea(`Fiado: ${datos.deudor_dni ?? datos.fiador_dni ?? '-'}`))
+    if (datos.monto_fiado > 0) partes.push(linea(padDerecha(`A cuenta: ${moneda(datos.monto_fiado, simbolo)}`, w)))
+  }
   partes.push(separador(w))
 
   if (pie) { partes.push(centradoOn(), linea(pie), izquierdaOn()) }

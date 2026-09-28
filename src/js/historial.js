@@ -29,8 +29,10 @@ function renderHistorial (ventas, rango) {
   const porMetodo = {}
   for (const v of ventas) {
     if (v.estado === 'completada') {
-      if (v.total > 0) totalNeto += v.total
+      totalNeto += v.total
       porMetodo[v.metodo_pago] = (porMetodo[v.metodo_pago] || 0) + v.total
+    } else if (v.estado === 'anulada') {
+      anuladas++
     }
   }
 
@@ -48,10 +50,14 @@ function renderHistorial (ventas, rango) {
   for (const v of ventas) {
     const f = v.fecha_hora
     const tr = document.createElement('tr')
+    const esFiado = Number(v.es_fiado) === 1
+    const nombreDeudor = (v.deudor_nombre ?? v.fiador_nombre ?? '').trim()
+    const dniDeudor = (v.deudor_dni ?? v.fiador_dni ?? '').trim()
+    const fiadoTag = esFiado ? ` <span class="badge ambar">Fiado${nombreDeudor ? ` (${esc(nombreDeudor)})` : ''}</span>` : ''
     tr.innerHTML = `
       <td class="mono">${v.id}</td>
       <td>${esc(f)}</td>
-      <td>${esc(v.metodo_pago || '—')}</td>
+      <td>${esc(v.metodo_pago || '—')}${fiadoTag}</td>
       <td class="num">${v.items.length}</td>
       <td class="num"><strong>${fmtMoneda(v.total)}</strong></td>
       <td><span class="estado-chip ${v.estado}">${v.estado === 'completada' ? 'Completada' : 'Anulada'}</span></td>
@@ -73,6 +79,7 @@ async function verVenta (id) {
     <strong>${new Date(v.fecha_hora.replace(' ', 'T')).toLocaleString()}</strong><br>
     Método: ${esc(v.metodo_pago)} · Operador: ${esc(v.operador || '—')}<br>
     Subtotal: ${fmtMoneda(v.subtotal)} · Descuento: ${fmtMoneda(v.descuento)} · <strong>Total: ${fmtMoneda(v.total)}</strong><br>
+    ${Number(v.es_fiado) === 1 ? `Fiado${(v.deudor_nombre ?? v.fiador_nombre) ? ` (${esc(v.deudor_nombre ?? v.fiador_nombre)})` : ''}: ${esc(v.deudor_dni ?? v.fiador_dni ?? '')} · Entregado: ${fmtMoneda(v.recibido)} · A cuenta: ${fmtMoneda(v.monto_fiado)}<br>` : ''}
     <span class="estado-chip ${v.estado}">${v.estado === 'completada' ? 'Completada' : 'Anulada'}</span>`
   $('#mv-body').innerHTML = v.items.map(it => `<tr>
     <td>${esc(it.nombre)} <span class="mono muted">${esc(it.codigo_barras)}</span></td>

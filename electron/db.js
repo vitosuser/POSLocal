@@ -65,7 +65,51 @@ const MIGRATIONS = [
   );
   `,
   // ---- v2: marca del producto (para reportes) ----
-  `ALTER TABLE productos ADD COLUMN marca TEXT NOT NULL DEFAULT '';`
+  `ALTER TABLE productos ADD COLUMN marca TEXT NOT NULL DEFAULT '';`,
+  // ---- v3: fiadores + ventas a fiado ----
+  `
+  CREATE TABLE IF NOT EXISTS fiadores (
+    dni             TEXT PRIMARY KEY,
+    nombre          TEXT NOT NULL,
+    nota            TEXT NOT NULL DEFAULT '',
+    deuda           INTEGER NOT NULL DEFAULT 0,      -- centavos
+    debe            INTEGER NOT NULL DEFAULT 0,      -- 1 = debe, 0 = no debe
+    creado_en       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    actualizado_en  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  ALTER TABLE ventas ADD COLUMN es_fiado INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE ventas ADD COLUMN fiador_dni TEXT NOT NULL DEFAULT '';
+  ALTER TABLE ventas ADD COLUMN monto_fiado INTEGER NOT NULL DEFAULT 0;
+  CREATE INDEX IF NOT EXISTS idx_ventas_fiado ON ventas(es_fiado);
+  CREATE INDEX IF NOT EXISTS idx_ventas_fiador ON ventas(fiador_dni);
+  `,
+  // ---- v4: fiadores -> deudores + tabla de proveedores ----
+  `
+  CREATE TABLE IF NOT EXISTS deudores (
+    dni             TEXT PRIMARY KEY,
+    nombre          TEXT NOT NULL,
+    nota            TEXT NOT NULL DEFAULT '',
+    deuda           INTEGER NOT NULL DEFAULT 0,      -- centavos
+    debe            INTEGER NOT NULL DEFAULT 0,      -- 1 = debe, 0 = no debe
+    creado_en       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    actualizado_en  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  INSERT OR IGNORE INTO deudores (dni, nombre, nota, deuda, debe, creado_en, actualizado_en)
+    SELECT dni, nombre, nota, deuda, debe, creado_en, actualizado_en FROM fiadores;
+  DROP TABLE fiadores;
+  CREATE TABLE IF NOT EXISTS proveedores (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre          TEXT NOT NULL,
+    rubro           TEXT NOT NULL DEFAULT '',
+    contacto        TEXT NOT NULL DEFAULT '',
+    nota            TEXT NOT NULL DEFAULT '',
+    creado_en       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    actualizado_en  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  ALTER TABLE ventas ADD COLUMN deudor_dni TEXT NOT NULL DEFAULT '';
+  UPDATE ventas SET deudor_dni = fiador_dni WHERE deudor_dni = '' OR deudor_dni IS NULL;
+  CREATE INDEX IF NOT EXISTS idx_ventas_deudor ON ventas(deudor_dni);
+  `
 ]
 
 const SETTING_DEFAULTS = {
@@ -122,6 +166,12 @@ function migrar (db) {
       db.exec('COMMIT')
     } catch (e) {
       db.exec('ROLLBACK')
+      // migraciones idempotentes: si la columna ya existe, avanzar igual
+      if (/duplicate column name/i.test(e.message || '')) {
+        version = version + 1
+        db.exec(`PRAGMA user_version = ${version}`)
+        continue
+      }
       throw e
     }
   }
