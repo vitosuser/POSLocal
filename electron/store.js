@@ -392,7 +392,125 @@ function guardarProveedor (db, datos) {
 function eliminarProveedor (db, id) {
   const p = obtenerProveedor(db, id)
   if (!p) throw new Error('Proveedor no encontrado')
+  const conCompras = db.prepare('SELECT COUNT(*) AS n FROM compras WHERE proveedor_id = ?').get(Number(id))
+  if (conCompras && Number(conCompras.n) > 0) {
+    throw new Error(`No se puede eliminar "${p.nombre}" porque tiene compras asociadas`)
+  }
   db.prepare('DELETE FROM proveedores WHERE id = ?').run(Number(id))
+  return { ok: true }
+}
+
+// ---------------- Compras / Reposicion ----------------
+// Solo registro: no toca stock ni el costo del catalogo.
+
+function listarCompras (db, { desde, hasta, proveedor_id, soloSinFactura = false } = {}) {
+  const conds = []
+  const params = []
+  if (desde) { conds.push(`date(c.fecha) >= date(?)`); params.push(desde) }
+  if (hasta) { conds.push(`date(c.fecha) <= date(?)`); params.push(hasta) }
+  if (proveedor_id !== undefined && proveedor_id !== null && proveedor_id !== '') {
+    conds.push(`c.proveedor_id = ?`); params.push(Number(proveedor_id))
+  }
+  if (soloSinFactura) { conds.push(`c.factura_archivo = ''`) }
+  const where = conds.length ? `WHERE ${conds.join(' AND ')}` : ''
+  const compras = db.prepare(
+    `SELECT c.*, p.nombre AS proveedor_nombre FROM compras c
+     LEFT JOIN proveedores p ON p.id = c.proveedor_id
+     ${where} ORDER BY c.id DESC`).all(...params)
+  if (!compras.length) return compras
+  adjuntarItemsCompra(db, compras)
+  return compras
+}
+
+function obtenerCompra (db, id) {
+  const compra = db.prepare(
+    `SELECT c.*, p.nombre AS proveedor_nombre FROM compras c
+     LEFT JOIN proveedores p ON p.id = c.proveedor_id
+     WHERE c.id = ?`).get(Number(id))
+  if (!compra) return null
+  adjuntarItemsCompra(db, [compra])
+  return compra
+}
+
+function adjuntarItemsCompra (db, compras) {
+  const ids = compras.map(c => c.id)
+  const placeholders = ids.map(() => '?').join(',')
+  const items = db.prepare(`SELECT * FROM compras_items WHERE compra_id IN (${placeholders}) ORDER BY id`).all(...ids)
+  const porCompra = new Map()
+  for (const it of items) {
+    if (!porCompra.has(it.compra_id)) porCompra.set(it.compra_id, [])
+    porCompra.get(it.compra_id).push(it)
+  }
+  for (const c of compras) c.items = porCompra.get(c.id) || []
+}
+
+function fechaCompraValida (v, defecto) {
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v || '')) return v
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v || '')) return `${v} 12:00:00`
+  return defecto
+}
+
+function guardarCompra (db, datos) {
+  const items = Array.isArray(datos.items) ? datos.items : []
+  if (!items.length) throw new Error('La compra no tiene productos')
+  const proveedorId = Number(datos.proveedor_id)
+  if (!(proveedorId > 0)) throw new Error('Seleccioná un proveedor')
+  const proveedor = obtenerProveedor(db, proveedorId)
+  if (!proveedor) throw new Error('Proveedor no encontrado')
+
+  return transaccion(db, () => {
+    const filas = []
+    let total = 0
+    for (const it of items) {
+      const p = obtenerProducto(db, it.codigo)
+      if (!p) throw new Error(`Producto no encontrado: ${it.codigo}`)
+      const cantidad = Number(it.cantidad)
+      if (!(cantidad > 0) || !Number.isFinite(cantidad)) {
+        throw new Error(`Cantidad inválida para "${p.nombre}"`)
+      }
+      const costo = centsValido(it.costo_unitario, `costo de "${p.nombre}"`, 0)
+      const totalLinea = Math.round(costo * cantidad)
+      total += totalLinea
+      filas.push({ codigo: p.codigo_barras, nombre: p.nombre, cantidad, costo, totalLinea })
+    }
+
+    const fecha = fechaCompraValida(datos.fecha, isoLocal())
+    const nota = String(datos.nota || '').trim().slice(0, 500)
+    const id = datos.id === undefined || datos.id === null || datos.id === '' ? null : Number(datos.id)
+
+    const insItem = db.prepare(`INSERT INTO compras_items (compra_id, codigo_barras, nombre, cantidad, costo_unitario, total_linea)
+                                VALUES (?,?,?,?,?,?)`)
+    let compraId
+    if (id !== null) {
+      const existente = db.prepare('SELECT * FROM compras WHERE id = ?').get(id)
+      if (!existente) throw new Error('Compra no encontrada')
+      db.prepare(`UPDATE compras SET proveedor_id=?, fecha=?, total=?, nota=?, actualizado_en=? WHERE id=?`)
+        .run(proveedorId, fecha, total, nota, isoLocal(), id)
+      db.prepare('DELETE FROM compras_items WHERE compra_id = ?').run(id)
+      compraId = id
+    } else {
+      const info = db.prepare(`INSERT INTO compras (proveedor_id, fecha, total, nota) VALUES (?,?,?,?)`)
+        .run(proveedorId, fecha, total, nota)
+      compraId = Number(info.lastInsertRowid)
+    }
+    for (const f of filas) {
+      insItem.run(compraId, f.codigo, f.nombre, f.cantidad, f.costo, f.totalLinea)
+    }
+    return obtenerCompra(db, compraId)
+  })
+}
+
+function eliminarCompra (db, id) {
+  const compra = db.prepare('SELECT * FROM compras WHERE id = ?').get(Number(id))
+  if (!compra) throw new Error('Compra no encontrada')
+  if (compra.factura_archivo) {
+    try {
+      const fs = require('fs')
+      if (fs.existsSync(compra.factura_archivo)) fs.unlinkSync(compra.factura_archivo)
+    } catch (_) {}
+  }
+  db.prepare('DELETE FROM compras_items WHERE compra_id = ?').run(compra.id)
+  db.prepare('DELETE FROM compras WHERE id = ?').run(compra.id)
   return { ok: true }
 }
 
@@ -598,6 +716,7 @@ module.exports = {
   ajustarStock, movimientosStock,
   listarDeudores, obtenerDeudor, guardarDeudor, eliminarDeudor, registrarPagoDeudor,
   listarProveedores, obtenerProveedor, guardarProveedor, eliminarProveedor,
+  listarCompras, obtenerCompra, guardarCompra, eliminarCompra,
   obtenerSettings, guardarSettings,
   generarReporte
 }

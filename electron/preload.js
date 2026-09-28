@@ -37,6 +37,14 @@ const api = {
     guardar: (proveedor) => invoke('proveedores:save', proveedor),
     eliminar: (id) => invoke('proveedores:remove', id)
   },
+  compras: {
+    listar: (filtro) => invoke('compras:list', filtro),
+    obtener: (id) => invoke('compras:get', id),
+    guardar: (compra) => invoke('compras:save', compra),
+    eliminar: (id) => invoke('compras:remove', id),
+    adjuntarFactura: (id) => invoke('compras:adjuntar', id),
+    verFactura: (id) => invoke('compras:verFactura', id)
+  },
   settings: {
     getAll: () => invoke('settings:getAll'),
     setMany: (datos) => invoke('settings:setMany', datos)

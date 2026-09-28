@@ -109,6 +109,33 @@ const MIGRATIONS = [
   ALTER TABLE ventas ADD COLUMN deudor_dni TEXT NOT NULL DEFAULT '';
   UPDATE ventas SET deudor_dni = fiador_dni WHERE deudor_dni = '' OR deudor_dni IS NULL;
   CREATE INDEX IF NOT EXISTS idx_ventas_deudor ON ventas(deudor_dni);
+  `,
+  // ---- v5: compras/reposicion con facturas adjuntas (sin tocar stock) ----
+  `
+  CREATE TABLE IF NOT EXISTS compras (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    proveedor_id    INTEGER NOT NULL REFERENCES proveedores(id),
+    fecha           TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    total           INTEGER NOT NULL DEFAULT 0,      -- centavos (calculado)
+    nota            TEXT NOT NULL DEFAULT '',
+    factura_archivo TEXT NOT NULL DEFAULT '',
+    factura_nombre  TEXT NOT NULL DEFAULT '',
+    factura_mime    TEXT NOT NULL DEFAULT '',
+    creado_en       TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    actualizado_en  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  );
+  CREATE TABLE IF NOT EXISTS compras_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    compra_id       INTEGER NOT NULL REFERENCES compras(id) ON DELETE CASCADE,
+    codigo_barras   TEXT NOT NULL,
+    nombre          TEXT NOT NULL,                   -- snapshot
+    cantidad        REAL NOT NULL,
+    costo_unitario  INTEGER NOT NULL DEFAULT 0,      -- centavos (snapshot, no pisa el costo)
+    total_linea     INTEGER NOT NULL                 -- centavos
+  );
+  CREATE INDEX IF NOT EXISTS idx_compras_fecha ON compras(fecha);
+  CREATE INDEX IF NOT EXISTS idx_compras_proveedor ON compras(proveedor_id);
+  CREATE INDEX IF NOT EXISTS idx_compras_items_compra ON compras_items(compra_id);
   `
 ]
 
@@ -139,7 +166,9 @@ const SETTING_DEFAULTS = {
   backup_frecuencia: 'cierre',    // 'cierre' | 'diario' | 'manual'
   backup_hora: '20:00',
   backup_ultimo: '',
-  backup_ultimo_archivo: ''
+  backup_ultimo_archivo: '',
+  // Facturas de compra (reposicion)
+  facturas_carpeta: ''
 }
 
 function openDb (dataDir) {

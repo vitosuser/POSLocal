@@ -5,7 +5,8 @@ const CONFIG_CAMPOS = [
   'lect_tipo',
   'imp_papel', 'imp_tipo_conexion', 'imp_ip', 'imp_puerto_red', 'imp_serie_puerto',
   'imp_serie_baudrate', 'imp_ancho',
-  'backup_activado', 'backup_carpeta', 'backup_frecuencia', 'backup_hora'
+  'backup_activado', 'backup_carpeta', 'backup_frecuencia', 'backup_hora',
+  'facturas_carpeta'
 ]
 
 function initConfiguracion () {
@@ -13,6 +14,7 @@ function initConfiguracion () {
   $('#btn-probar-impresora').addEventListener('click', probarImpresora)
   $('#btn-backup-ahora').addEventListener('click', backupAhora)
   $('#btn-buscar-carpeta').addEventListener('click', buscarCarpeta)
+  $('#btn-buscar-facturas').addEventListener('click', buscarCarpetaFacturas)
 
   const conexion = $('[name="imp_tipo_conexion"]')
   const actualizarCamposConexion = () => {
@@ -99,6 +101,12 @@ async function buscarCarpeta () {
   const r = await window.api.dialog.openFolder()
   if (!r.ok) return
   $('[name="backup_carpeta"]').value = r.datos.path || ''
+}
+
+async function buscarCarpetaFacturas () {
+  const r = await window.api.dialog.openFolder()
+  if (!r.ok) return
+  $('[name="facturas_carpeta"]').value = r.datos.path || ''
 }
 
 async function cargarEstadoBackup () {

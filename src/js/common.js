@@ -91,6 +91,9 @@ async function refrescarSeccion (nombre) {
     } else if (nombre === 'proveedores') {
       if (typeof cargarProveedores === 'function') await cargarProveedores()
       if (typeof renderProveedores === 'function') renderProveedores()
+    } else if (nombre === 'reposicion') {
+      if (typeof cargarProveedores === 'function') await cargarProveedores()
+      if (typeof buscarCompras === 'function') await buscarCompras()
     } else if (nombre === 'reportes') {
       if (typeof renderReportes === 'function') renderReportes()
     } else if (nombre === 'configuracion') {

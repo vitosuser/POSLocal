@@ -96,6 +96,17 @@ function crearApi () {
       guardar: async (p) => ({ ok: true, datos: { id: 1, ...p } }),
       eliminar: async () => ({ ok: true, datos: { ok: true } })
     },
+    compras: {
+      listar: async () => ({ ok: true, datos: [] }),
+      obtener: async () => ({ ok: true, datos: null }),
+      guardar: async (c) => ({ ok: true, datos: { id: 1, ...c } }),
+      eliminar: async () => ({ ok: true, datos: { ok: true } }),
+      adjuntarFactura: async () => ({ ok: true, datos: { cancelado: true } }),
+      verFactura: async () => ({ ok: true, datos: { ok: true } })
+    },
+    dialog: {
+      openFolder: async () => ({ ok: false, canceled: true })
+    },
     stock: {
       ajustar: async () => ({ ok: true, datos: { stock: 5 } }),
       movimientos: async () => ({ ok: true, datos: [] })
@@ -426,5 +437,29 @@ test('la seccion proveedores existe y renderiza', async () => {
     assert.ok(document.querySelector('#btn-nuevo-proveedor'), 'falta boton nuevo proveedor')
     assert.ok(document.querySelector('#proveedores-body'), 'falta tabla de proveedores')
     assert.ok(document.querySelector('#modal-proveedor'), 'falta modal de proveedor')
+  } finally { dom.window.close() }
+})
+
+test('la seccion reposicion existe y renderiza', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const nav = document.querySelector('.nav-item[data-seccion="reposicion"]')
+    assert.ok(nav, 'falta el item Reposición en el lateral')
+    nav.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 100))
+    assert.equal(document.querySelector('.seccion.activa').id, 'seccion-reposicion')
+    assert.ok(document.querySelector('#btn-nueva-compra'), 'falta boton nueva compra')
+    assert.ok(document.querySelector('#compras-body'), 'falta tabla de compras')
+    assert.ok(document.querySelector('#modal-compra'), 'falta modal de compra')
+    assert.ok(document.querySelector('#modal-detalle-compra'), 'falta modal de detalle')
+    assert.ok(document.querySelector('#btn-ver-factura'), 'falta boton ver factura')
+  } finally { dom.window.close() }
+})
+
+test('configuracion expone la carpeta de facturas', async () => {
+  const { dom, document } = await cargarApp()
+  try {
+    assert.ok(document.querySelector('[name="facturas_carpeta"]'), 'falta input de carpeta de facturas')
+    assert.ok(document.querySelector('#btn-buscar-facturas'), 'falta boton buscar facturas')
   } finally { dom.window.close() }
 })

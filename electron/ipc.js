@@ -1,8 +1,9 @@
 'use strict'
 
-const { ipcMain, BrowserWindow, dialog, app } = require('electron')
+const { ipcMain, BrowserWindow, dialog, app, shell } = require('electron')
 const store = require('./store.js')
 const backup = require('./backup.js')
+const facturas = require('./facturas.js')
 const ticket = require('./printer/ticket.js')
 const red = require('./printer/red.js')
 const { exportarReportePdf } = require('./reporte-pdf.js')
@@ -133,6 +134,36 @@ function registrarIpc (ctx) {
     if (!venta) throw new Error('Venta no encontrada')
     const s = store.obtenerSettings(db)
     return imprimirTicket(venta, s)
+  }))
+
+  // ---- Compras / Reposicion ----
+  ipcMain.handle('compras:list', conOK((f) => store.listarCompras(db, f || {})))
+  ipcMain.handle('compras:get', conOK((id) => store.obtenerCompra(db, id)))
+  ipcMain.handle('compras:save', conOK((c) => store.guardarCompra(db, c || {})))
+  ipcMain.handle('compras:remove', conOK((id) => store.eliminarCompra(db, id)))
+  ipcMain.handle('compras:adjuntar', conOKAsync(async (id) => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null
+    const elegido = await dialog.showOpenDialog(win, {
+      title: 'Adjuntar factura de compra',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Facturas', extensions: ['pdf', 'jpg', 'jpeg', 'png'] },
+        { name: 'Todos', extensions: ['*'] }
+      ]
+    })
+    if (elegido.canceled || !elegido.filePaths.length) return { cancelado: true }
+    return facturas.adjuntarFactura(db, id, elegido.filePaths[0])
+  }))
+  ipcMain.handle('compras:verFactura', conOKAsync(async (id) => {
+    const compra = store.obtenerCompra(db, id)
+    if (!compra) throw new Error('Compra no encontrada')
+    if (!compra.factura_archivo) throw new Error('La compra no tiene factura adjunta')
+    const fs = require('fs')
+    if (!fs.existsSync(compra.factura_archivo)) {
+      throw new Error(`El archivo de factura ya no existe: ${compra.factura_archivo}`)
+    }
+    await shell.openPath(compra.factura_archivo)
+    return { ok: true, archivo: compra.factura_archivo }
   }))
 
   // ---- Reportes ----

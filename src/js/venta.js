@@ -488,6 +488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initHistorial()
   if (typeof initDeudores === 'function') initDeudores()
   if (typeof initProveedores === 'function') initProveedores()
+  if (typeof initReposicion === 'function') initReposicion()
   initReportes()
   initConfiguracion()
 })
