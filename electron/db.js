@@ -168,7 +168,11 @@ const SETTING_DEFAULTS = {
   backup_ultimo: '',
   backup_ultimo_archivo: '',
   // Facturas de compra (reposicion)
-  facturas_carpeta: ''
+  facturas_carpeta: '',
+  // Privacidad en el mostrador
+  ocultar_totales: '0',             // '1' = oculta ventas/total del dia
+  // Atajos de teclado (JSON id->combo; '' = sin asignar)
+  atajos: ''
 }
 
 function openDb (dataDir) {
@@ -176,6 +180,7 @@ function openDb (dataDir) {
     fs.mkdirSync(dataDir, { recursive: true })
   }
   const db = new DatabaseSync(path.join(dataDir, 'vitpos.db'))
+  db.vitposPath = path.join(dataDir, 'vitpos.db')
   db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec('PRAGMA busy_timeout = 5000')

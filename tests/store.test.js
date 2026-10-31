@@ -189,3 +189,30 @@ test('generarReporte calcula resumen, agrupaciones y excluye anuladas', () => {
   assert.throws(() => store.generarReporte(db, {}), /rango/)
   db.close()
 })
+test('dos ventas en espera no se pisan: la segunda valida stock al cobrar', () => {
+  const db = openDb(tempDir())
+  store.guardarProducto(db, { codigo_barras: 'w1', nombre: 'W', precio: 1000, costo: 400, stock: 2 })
+  // primera pestana cobra todo el stock
+  const v1 = store.crearVenta(db, { items: [{ codigo: 'w1', cantidad: 2 }], recibido: 2000 })
+  assert.equal(v1.total, 2000)
+  assert.equal(store.obtenerProducto(db, 'w1').stock, 0)
+  // la segunda pestana, armada antes, falla al cobrar por falta de stock
+  assert.throws(() => store.crearVenta(db, { items: [{ codigo: 'w1', cantidad: 1 }], recibido: 1000 }), /Stock insuficiente/)
+  // y la contabilidad queda intacta: una sola venta registrada
+  assert.equal(store.listarVentas(db, {}).filter(v => v.estado === 'completada').length, 1)
+  assert.equal(store.obtenerProducto(db, 'w1').stock, 0)
+  db.close()
+})
+
+test('anular una venta no afecta a las demas', () => {
+  const db = openDb(tempDir())
+  store.guardarProducto(db, { codigo_barras: 'w2', nombre: 'W2', precio: 500, costo: 200, stock: 5 })
+  const a = store.crearVenta(db, { items: [{ codigo: 'w2', cantidad: 1 }], recibido: 500 })
+  const b = store.crearVenta(db, { items: [{ codigo: 'w2', cantidad: 2 }], recibido: 1000 })
+  store.anularVenta(db, a.ventaId)
+  assert.equal(store.obtenerProducto(db, 'w2').stock, 3, 'repone solo lo de la venta anulada')
+  const vb = store.obtenerVenta(db, b.ventaId)
+  assert.equal(vb.estado, 'completada')
+  assert.equal(vb.total, 1000)
+  db.close()
+})

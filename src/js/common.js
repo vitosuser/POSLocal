@@ -8,6 +8,7 @@ const App = {
   productosCache: [],
   deudoresCache: [],
   proveedoresCache: [],
+  atajos: {},
   seccionActual: 'venta'
 }
 
@@ -100,6 +101,7 @@ async function refrescarSeccion (nombre) {
       cargarConfigForm()
       cargarEstadoBackup()
       cargarInfoSistema()
+      if (typeof renderAtajos === 'function') renderAtajos()
     }
   } catch (_) { /* nunca romper la navegacion */ }
 }
@@ -131,7 +133,83 @@ function reloj () {
 async function cargarConfig () {
   const r = await window.api.settings.getAll()
   if (r.ok) App.settings = r.datos
+  construirAtajos()
   return App.settings
+}
+
+function construirAtajos () {
+  if (typeof mapaAtajos !== 'function') return
+  App.atajos = mapaAtajos(App.settings)
+  actualizarTitulosAtajos()
+}
+
+function actualizarTitulosAtajos () {
+  const botones = {
+    'abrir-cobro': '#btn-cobrar',
+    'limpiar-venta': '#btn-limpiar',
+    'confirmar-cobro': '#btn-confirmar-cobro',
+    'nuevo-producto': '#btn-nuevo-producto'
+  }
+  for (const [id, sel] of Object.entries(botones)) {
+    const el = $(sel)
+    if (!el) continue
+    const combo = (App.atajos || {})[id]
+    if (el.dataset.baseHtml === undefined) el.dataset.baseHtml = el.innerHTML
+    el.innerHTML = el.dataset.baseHtml + (combo ? ` <span class="atajo-tag">(${esc(combo)})</span>` : '')
+  }
+  const titulos = {
+    'abrir-cobro': '#btn-cobrar',
+    'limpiar-venta': '#btn-limpiar',
+    'foco-buscador': '#buscador-venta'
+  }
+  const nombres = { 'abrir-cobro': 'Cobrar', 'limpiar-venta': 'Limpiar venta', 'foco-buscador': 'Buscar producto' }
+  for (const [id, sel] of Object.entries(titulos)) {
+    const el = $(sel)
+    if (!el) continue
+    const combo = (App.atajos || {})[id]
+    el.title = combo ? `${nombres[id]} (${combo})` : nombres[id]
+  }
+}
+
+function ejecutarAtajo (id) {
+  if (id === 'confirmar-cobro') {
+    const modal = $('#modal-cobro')
+    if (!modal || modal.classList.contains('oculto')) return
+    const btn = $('#btn-confirmar-cobro')
+    if (btn && !btn.disabled) btn.click()
+    return
+  }
+  if (id === 'nuevo-producto') {
+    if (hayModalAbierto()) return
+    if (typeof abrirModalProducto === 'function') abrirModalProducto()
+    return
+  }
+  // el resto solo tiene sentido en la seccion venta y sin modales
+  if (App.seccionActual !== 'venta' || hayModalAbierto()) return
+  if (id === 'foco-buscador') {
+    const b = $('#buscador-venta')
+    if (b) b.focus()
+  } else if (id === 'abrir-cobro') {
+    const btn = $('#btn-cobrar')
+    if (btn && !btn.disabled) btn.click()
+  } else if (id === 'limpiar-venta') {
+    const btn = $('#btn-limpiar')
+    if (btn) btn.click()
+  }
+}
+
+function manejarAtajos (e) {
+  if (typeof normalizarCombinacion !== 'function') return
+  const combo = normalizarCombinacion(e)
+  if (!combo) return
+  const mapa = App.atajos || {}
+  for (const [id, c] of Object.entries(mapa)) {
+    if (c && c === combo) {
+      e.preventDefault()
+      ejecutarAtajo(id)
+      return
+    }
+  }
 }
 
 async function cargarProductos () {
@@ -166,6 +244,7 @@ function initCommon () {
   }))
   // lo que se tipea fuera de un campo va derecho al buscador de venta
   window.addEventListener('keydown', capturaTeclasGlobales)
+  window.addEventListener('keydown', manejarAtajos)
   reloj()
   setInterval(reloj, 1000)
 }

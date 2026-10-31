@@ -9,6 +9,17 @@ const backup = require('./backup.js')
 
 app.setName('VitPos')
 
+// En desarrollo recarga la ventana sola al guardar cambios (sin rebuildear).
+// En la app instalada (empaquetada) no hace nada.
+if (!app.isPackaged) {
+  try {
+    require('electron-reload')([
+      path.join(__dirname, '..', 'src'),
+      path.join(__dirname, 'preload.js')
+    ])
+  } catch (_) {}
+}
+
 let mainWindow = null
 let db = null
 
@@ -24,6 +35,7 @@ function crearVentana () {
     autoHideMenuBar: true,
     show: false,
     title: 'VitPos',
+    icon: path.join(__dirname, '..', 'src', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

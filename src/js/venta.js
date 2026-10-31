@@ -3,9 +3,15 @@
 const METODOS = ['Efectivo', 'Débito', 'Crédito', 'Transferencia', 'QR', 'Mercado Pago']
 
 const Venta = {
-  carrito: new Map(),
-  metodoSeleccionado: 'Efectivo'
+  carrito: new Map(), // SIEMPRE el carrito de la pestana activa
+  metodoSeleccionado: 'Efectivo',
+  pestanas: [], // { id, nombre, carrito: Map, metodo }
+  activa: 0,
+  proximoId: 1
 }
+
+const OJO_ABIERTO = '<svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+const OJO_CERRADO = '<svg viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>'
 
 // espera el "burst" del escaner antes de decidir si es un codigo completo
 let sugerenciasLista = []
@@ -49,8 +55,11 @@ function initVenta () {
     b.textContent = m
     b.addEventListener('click', () => {
       Venta.metodoSeleccionado = m
+      const tab = pestanaActiva()
+      if (tab) tab.metodo = m
       $$('#metodos-pago .metodo-btn').forEach(x => x.classList.remove('seleccionado'))
       b.classList.add('seleccionado')
+      renderPestanas()
     })
     msel.appendChild(b)
   })
@@ -84,8 +93,99 @@ function initVenta () {
   if (btnNuevoDeudor) btnNuevoDeudor.addEventListener('click', () => {
     $('#fiado-nuevo').classList.toggle('oculto')
   })
+  const btnOjo = $('#btn-ojo-totales')
+  if (btnOjo) btnOjo.addEventListener('click', alternarOjoTotales)
 
+  aplicarOjoTotales()
+  if (!Venta.pestanas.length) nuevaPestana()
+  else activarPestana(Venta.activa)
   actualizarVentasDelDia()
+}
+
+// ---------- pestanas de venta (clientes en espera) ----------
+
+function pestanaActiva () {
+  return Venta.pestanas[Venta.activa] || null
+}
+
+function cobroAbierto () {
+  const m = typeof $ === 'function' && $('#modal-cobro')
+  return !!(m && !m.classList.contains('oculto'))
+}
+
+function syncMetodoButtons () {
+  $$('#metodos-pago .metodo-btn').forEach(x =>
+    x.classList.toggle('seleccionado', x.textContent === Venta.metodoSeleccionado))
+  const sel = $('#c-metodo-pago')
+  if (sel) sel.value = Venta.metodoSeleccionado
+}
+
+function nuevaPestana () {
+  if (cobroAbierto()) { toast('Terminá o cancelá el cobro antes de abrir otra venta', 'error'); return }
+  const id = Venta.proximoId++
+  Venta.pestanas.push({ id, nombre: `Venta ${id}`, carrito: new Map(), metodo: Venta.metodoSeleccionado })
+  activarPestana(Venta.pestanas.length - 1)
+}
+
+function activarPestana (i) {
+  if (i < 0 || i >= Venta.pestanas.length) return
+  if (i !== Venta.activa && cobroAbierto()) { toast('Terminá o cancelá el cobro antes de cambiar de venta', 'error'); return }
+  Venta.activa = i
+  const tab = Venta.pestanas[i]
+  Venta.carrito = tab.carrito
+  Venta.metodoSeleccionado = tab.metodo
+  syncMetodoButtons()
+  renderCarrito()
+  const input = $('#buscador-venta')
+  if (input) input.focus()
+}
+
+function cerrarPestana (i) {
+  const tab = Venta.pestanas[i]
+  if (!tab) return
+  if (cobroAbierto()) { toast('Terminá o cancelá el cobro antes de cerrar ventas', 'error'); return }
+  if (tab.carrito.size && !confirm(`¿Cerrar "${tab.nombre}" con productos sin cobrar?`)) return
+  Venta.pestanas.splice(i, 1)
+  if (!Venta.pestanas.length) {
+    nuevaPestana()
+    return
+  }
+  activarPestana(Math.min(i, Venta.pestanas.length - 1))
+}
+
+function totalPestana (tab) {
+  let t = 0, n = 0
+  tab.carrito.forEach(item => { t += item.cantidad * item.producto.precio; n += item.cantidad })
+  return { total: t, cantidad: n }
+}
+
+function renderPestanas () {
+  const cont = $('#venta-tabs')
+  if (!cont) return
+  cont.innerHTML = ''
+  Venta.pestanas.forEach((tab, i) => {
+    const { total, cantidad } = totalPestana(tab)
+    const b = document.createElement('button')
+    b.type = 'button'
+    b.className = 'tab-btn' + (i === Venta.activa ? ' activa' : '')
+    b.innerHTML = `<span>${esc(tab.nombre)} · ${cantidad} art.</span>` +
+      `<span class="tab-total">${fmtMoneda(total)}</span>`
+    const x = document.createElement('button')
+    x.type = 'button'
+    x.className = 'tab-cerrar'
+    x.title = `Cerrar ${tab.nombre}`
+    x.textContent = '✕'
+    x.addEventListener('click', (e) => { e.stopPropagation(); cerrarPestana(i) })
+    b.appendChild(x)
+    b.addEventListener('click', () => activarPestana(i))
+    cont.appendChild(b)
+  })
+  const nueva = document.createElement('button')
+  nueva.type = 'button'
+  nueva.className = 'tab-btn tab-nueva'
+  nueva.textContent = '+ Nueva venta'
+  nueva.addEventListener('click', () => nuevaPestana())
+  cont.appendChild(nueva)
 }
 
 // ---------- entrada (escanear / escribir) ----------
@@ -170,7 +270,8 @@ function incrementar (codigo, delta) {
 function buscarEnCache (texto) {
   const t = texto.toLowerCase()
   return Promise.resolve(App.productosCache.filter(p =>
-    p.activo && (p.nombre.toLowerCase().includes(t) || String(p.codigo_barras).includes(t))
+    p.activo && (p.nombre.toLowerCase().includes(t) || String(p.codigo_barras).includes(t) ||
+      String(p.marca || '').toLowerCase().includes(t) || String(p.categoria || '').toLowerCase().includes(t))
   ).slice(0, 8))
 }
 
@@ -185,7 +286,7 @@ function mostrarSugerencias (lista) {
     d.className = 'sug-item' + (i === sugerenciaIdx ? ' colocada' : '')
     const st = p.stock <= 0 ? 'sin stock' : `stock: ${fmtStock(p.stock)}`
     d.innerHTML = `<span class="sug-codigo">${esc(p.codigo_barras)}</span>
-      <span class="sug-nombre">${esc(p.nombre)}</span>
+      <span class="sug-nombre">${esc(p.nombre)}${p.marca ? ` <em>(${esc(p.marca)})</em>` : ''}</span>
       <span class="sug-precio">${fmtMoneda(p.precio)}</span>
       <span class="sug-stock">${st}</span>`
     d.addEventListener('click', () => { agregar(p); limpiarBuscador() })
@@ -265,6 +366,7 @@ function renderCarrito () {
   $('#carrito-conteo').textContent = `${cantidad} artículos`
   vacio.classList.toggle('oculto', Venta.carrito.size > 0)
   $('#btn-cobrar').disabled = Venta.carrito.size === 0
+  renderPestanas()
 }
 
 function limpiarCarrito () {
@@ -272,17 +374,19 @@ function limpiarCarrito () {
   renderCarrito()
 }
 
-// al volver a la seccion venta, actualiza los items del carrito con los
+// al volver a la seccion venta, actualiza los items de TODAS las pestanas con los
 // datos frescos de la base (precio/stock) sin perder cantidades
 function revincularCarrito () {
-  Venta.carrito.forEach((item, codigo) => {
-    const fresco = App.productosCache.find(p => p.codigo_barras === codigo)
-    if (!fresco) {
-      Venta.carrito.delete(codigo)
-      toast(`"${item.producto.nombre}" ya no existe y se quitó de la venta`, 'error')
-    } else {
-      item.producto = fresco
-    }
+  (Venta.pestanas.length ? Venta.pestanas : [{ carrito: Venta.carrito, nombre: 'Venta' }]).forEach(tab => {
+    tab.carrito.forEach((item, codigo) => {
+      const fresco = App.productosCache.find(p => p.codigo_barras === codigo)
+      if (!fresco) {
+        tab.carrito.delete(codigo)
+        toast(`"${item.producto.nombre}" ya no existe y se quitó de "${tab.nombre || 'la venta'}"`, 'error')
+      } else {
+        item.producto = fresco
+      }
+    })
   })
 }
 
@@ -321,20 +425,24 @@ function abrirCobro () {
   const fn = $('#fiado-nuevo')
   if (fn) { fn.classList.add('oculto'); $('#c-deudor-dni').value = ''; $('#c-deudor-nombre').value = ''; $('#c-deudor-nota').value = '' }
   recalcularCambio()
+  pintarRapidos(total)
+  modalAbrir('modal-cobro')
+  $('#c-descuento').focus()
+}
+
+function pintarRapidos (base) {
   $('#cobro-rapido').innerHTML = ''
-  const rapidos = calcRapidos(total)
+  const rapidos = calcRapidos(base)
   rapidos.forEach(v => {
     const b = document.createElement('button')
     b.type = 'button'
-    b.textContent = v === total ? 'Exacto' : fmtMoneda(v)
+    b.textContent = v === base ? 'Exacto' : fmtMoneda(v)
     b.addEventListener('click', () => {
       $('#c-recibido').value = String(v / 100)
       recalcularCambio()
     })
     $('#cobro-rapido').appendChild(b)
   })
-  modalAbrir('modal-cobro')
-  $('#c-descuento').focus()
 }
 
 function calcRapidos (total) {
@@ -364,7 +472,9 @@ function recalcularCambio () {
   const rec = aCentavos($('#c-recibido').value)
   const neto = Math.max(0, total - desc)
   const cambio = rec - neto
+  $('#modal-total').textContent = fmtMoneda(neto)
   $('#c-cambio').textContent = fmtMoneda(cambio < 0 ? 0 : cambio)
+  pintarRapidos(neto)
   const info = $('#fiado-info')
   if (info) {
     const chk = $('#c-es-fiado')
@@ -459,17 +569,40 @@ async function confirmarCobro () {
 
 // ---------- resumen del día ----------
 
+function totalesOcultos () {
+  return App.settings.ocultar_totales === '1'
+}
+
+function aplicarOjoTotales () {
+  const btn = $('#btn-ojo-totales')
+  if (btn) {
+    const oculto = totalesOcultos()
+    btn.innerHTML = oculto ? OJO_CERRADO : OJO_ABIERTO
+    btn.title = oculto ? 'Mostrar totales del día' : 'Ocultar totales del día'
+  }
+}
+
+async function alternarOjoTotales () {
+  const nuevo = totalesOcultos() ? '0' : '1'
+  const r = await window.api.settings.setMany({ ocultar_totales: nuevo })
+  if (!r.ok) { toast(r.error, 'error'); return }
+  App.settings = r.datos
+  aplicarOjoTotales()
+  actualizarVentasDelDia()
+}
+
 async function actualizarVentasDelDia () {
   const hoy = hoyLocal()
   const r = await window.api.ventas.totales({ desde: hoy, hasta: hoy })
   if (!r.ok) return
   const t = r.datos
-  $('#ventas-hoy-cant').textContent = t.cantidad
-  $('#ventas-hoy-total').textContent = fmtMoneda(t.total)
+  const oculto = totalesOcultos()
+  $('#ventas-hoy-cant').textContent = oculto ? '••' : t.cantidad
+  $('#ventas-hoy-total').textContent = oculto ? '••••••' : fmtMoneda(t.total)
   const met = METODOS.includes(Venta.metodoSeleccionado) ? Venta.metodoSeleccionado : null
   if (met) {
     $('#tot-mtd-nombre').textContent = met
-    $('#tot-mtd-valor').textContent = fmtMoneda(t.porMetodo[met] || 0)
+    $('#tot-mtd-valor').textContent = oculto ? '••••••' : fmtMoneda(t.porMetodo[met] || 0)
   } else {
     $('#tot-mtd-nombre').textContent = 'Por pago'
     $('#tot-mtd-valor').textContent = '-'

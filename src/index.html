@@ -74,6 +74,8 @@
           <div class="clock" id="clock"></div>
         </header>
 
+        <div id="venta-tabs" class="venta-tabs"></div>
+
         <div class="venta-layout">
           <!-- carrito -->
           <div class="carrito panel">
@@ -100,7 +102,10 @@
 
           <!-- panel de cobro -->
           <div class="cobro panel">
-            <h2>Cobro</h2>
+            <div class="panel-titulo">
+              <h2>Cobro</h2>
+              <button id="btn-ojo-totales" class="btn btn-ghost" type="button" title="Mostrar / ocultar totales del día"></button>
+            </div>
             <div class="cobro-venta-dia">
               <div class="cobro-item">
                 <span>Ventas hoy</span>
@@ -466,6 +471,7 @@
               <div style="display:flex;gap:6px;align-items:center">
                 <input name="backup_carpeta" type="text" placeholder="C:\Users\tu\Dropbox\VitPosBackup" style="flex:1">
                 <button type="button" id="btn-buscar-carpeta" class="btn btn-flat">Buscar…</button>
+                <button type="button" id="btn-verificar-backup" class="btn btn-flat">Verificar</button>
               </div>
             </label>
             <label>Frecuencia
@@ -481,6 +487,7 @@
             <div class="toolbar">
               <button type="button" id="btn-backup-ahora" class="btn">Hacer backup ahora</button>
             </div>
+            <div id="backup-carpeta-estado" class="estado-info"></div>
             <div id="backup-estado" class="estado-info"></div>
           </div>
 
@@ -492,13 +499,38 @@
               <div style="display:flex;gap:6px;align-items:center">
                 <input name="facturas_carpeta" type="text" placeholder="C:\Users\tu\Documentos\VitPosFacturas" style="flex:1">
                 <button type="button" id="btn-buscar-facturas" class="btn btn-flat">Buscar…</button>
+                <button type="button" id="btn-verificar-facturas" class="btn btn-flat">Verificar</button>
               </div>
             </label>
+            <div id="facturas-carpeta-estado" class="estado-info"></div>
           </div>
 
           <div class="panel config-card">
             <h2>Sistema</h2>
             <dl class="info-list" id="info-sistema"></dl>
+          </div>
+
+          <div class="panel config-card">
+            <h2>Base de datos</h2>
+            <p class="hint">Acá vive el archivo SQLite con toda la información del negocio
+               (productos, ventas, deudores, proveedores y compras).</p>
+            <label>Archivo SQLite
+              <div style="display:flex;gap:6px;align-items:center">
+                <input id="db-ruta" type="text" readonly style="flex:1" class="mono">
+                <button type="button" id="btn-copiar-db-ruta" class="btn btn-flat">Copiar</button>
+              </div>
+            </label>
+          </div>
+
+          <div class="panel config-card">
+            <h2>Atajos de teclado</h2>
+            <p class="hint">Tocá Cambiar y presioná la combinación. Esc cancela.
+               F5, F11, F12 y Ctrl+R/W/T/N/S están reservadas.</p>
+            <div id="atajos-lista"></div>
+            <div id="atajos-aviso" class="estado-info"></div>
+            <div class="toolbar" style="margin-top:6px">
+              <button type="button" id="btn-atajos-reset" class="btn btn-flat">Restablecer</button>
+            </div>
           </div>
         </form>
       </section>
@@ -719,12 +751,14 @@
       </header>
       <div class="modal-body">
         <div id="fp-info" class="estado-info"></div>
-        <label>Monto del pago
+        <label>Monto
           <input id="fp-monto" type="number" step="0.01" min="0" placeholder="0,00">
         </label>
+        <p class="hint">Sumar agrega a la deuda sin necesidad de registrar una venta.</p>
       </div>
       <footer class="modal-footer">
         <button class="btn btn-flat" data-cerrar="modal-pago-deudor">Cancelar</button>
+        <button class="btn" id="btn-sumar-deuda">Sumar a deuda</button>
         <button class="btn" id="btn-cancelar-deuda">Cancelar deuda</button>
         <button class="btn btn-primary" id="btn-guardar-pago">Registrar pago</button>
       </footer>
@@ -836,6 +870,7 @@
 
   <div id="toast" class="toast oculto"></div>
 
+  <script src="js/atajos.js"></script>
   <script src="js/common.js"></script>
   <script src="js/venta.js"></script>
   <script src="js/productos.js"></script>

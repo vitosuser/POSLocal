@@ -29,7 +29,8 @@ const api = {
     obtener: (dni) => invoke('deudores:get', dni),
     guardar: (deudor) => invoke('deudores:save', deudor),
     eliminar: (dni) => invoke('deudores:remove', dni),
-    pago: (datos) => invoke('deudores:pago', datos)
+    pago: (datos) => invoke('deudores:pago', datos),
+    ajustar: (datos) => invoke('deudores:ajustar', datos)
   },
   proveedores: {
     listar: () => invoke('proveedores:list'),
@@ -66,7 +67,8 @@ const api = {
     info: () => invoke('app:info')
   },
   dialog: {
-    openFolder: () => invoke('dialog:openFolder')
+    openFolder: (opciones) => invoke('dialog:openFolder', opciones),
+    verificarCarpeta: (ruta) => invoke('dialog:verificarCarpeta', ruta)
   }
 }
 

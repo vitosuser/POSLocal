@@ -15,6 +15,11 @@ function initConfiguracion () {
   $('#btn-backup-ahora').addEventListener('click', backupAhora)
   $('#btn-buscar-carpeta').addEventListener('click', buscarCarpeta)
   $('#btn-buscar-facturas').addEventListener('click', buscarCarpetaFacturas)
+  $('#btn-verificar-backup').addEventListener('click', () => verificarCarpetaCampo('backup_carpeta', '#backup-carpeta-estado'))
+  $('#btn-verificar-facturas').addEventListener('click', () => verificarCarpetaCampo('facturas_carpeta', '#facturas-carpeta-estado'))
+  $('#btn-copiar-db-ruta').addEventListener('click', copiarRutaDb)
+  const btnAtajosReset = $('#btn-atajos-reset')
+  if (btnAtajosReset) btnAtajosReset.addEventListener('click', restablecerAtajos)
 
   const conexion = $('[name="imp_tipo_conexion"]')
   const actualizarCamposConexion = () => {
@@ -28,6 +33,86 @@ function initConfiguracion () {
   cargarConfigForm()
   cargarInfoSistema()
   cargarEstadoBackup()
+  renderAtajos()
+}
+
+let atajoCapturando = null
+
+function renderAtajos () {
+  const cont = $('#atajos-lista')
+  if (!cont || typeof mapaAtajos === 'undefined') return
+  const mapa = App.atajos || mapaAtajos(App.settings)
+  cont.innerHTML = ''
+  ATAJOS_ACCIONES.forEach(a => {
+    const combo = mapa[a.id] || ''
+    const fila = document.createElement('div')
+    fila.className = 'atajo-fila'
+    fila.innerHTML = `
+      <span>${esc(a.nombre)}</span>
+      <strong class="mono">${esc(combo || '—')}</strong>
+      <button type="button" class="btn btn-small" data-accion="cambiar">Cambiar</button>
+      <button type="button" class="btn btn-small btn-flat" data-accion="quitar">Quitar</button>`
+    fila.querySelector('[data-accion="cambiar"]').addEventListener('click', () => iniciarCapturaAtajo(a.id))
+    const btnQuitar = fila.querySelector('[data-accion="quitar"]')
+    btnQuitar.disabled = !combo
+    btnQuitar.addEventListener('click', () => guardarAtajo(a.id, ''))
+    cont.appendChild(fila)
+  })
+  const aviso = $('#atajos-aviso')
+  if (aviso) aviso.textContent = atajoCapturando ? 'Presioná la combinación (Esc cancela)…' : ''
+}
+
+function iniciarCapturaAtajo (id) {
+  atajoCapturando = id
+  renderAtajos()
+  window.addEventListener('keydown', capturarCombinacion, true)
+}
+
+function capturarCombinacion (e) {
+  if (!atajoCapturando) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.key === 'Escape') {
+    window.removeEventListener('keydown', capturarCombinacion, true)
+    atajoCapturando = null
+    renderAtajos()
+    return
+  }
+  const combo = normalizarCombinacion(e)
+  if (!combo) return
+  if (!esAsignable(combo)) {
+    toast(`"${combo}" está reservada, elegí otra`, 'error')
+    return
+  }
+  window.removeEventListener('keydown', capturarCombinacion, true)
+  const id = atajoCapturando
+  atajoCapturando = null
+  guardarAtajo(id, combo)
+}
+
+async function guardarAtajo (id, combo) {
+  const mapa = { ...(App.atajos || {}) }
+  if (combo && hayConflicto(mapa, id, combo)) {
+    toast(`"${combo}" ya está asignada a otra acción`, 'error')
+    renderAtajos()
+    return
+  }
+  mapa[id] = combo
+  const r = await window.api.settings.setMany({ atajos: JSON.stringify(mapa) })
+  if (!r.ok) { toast(r.error, 'error'); return }
+  App.settings = r.datos
+  construirAtajos()
+  renderAtajos()
+  toast(combo ? `Atajo ${combo} guardado ✓` : 'Atajo eliminado')
+}
+
+async function restablecerAtajos () {
+  const r = await window.api.settings.setMany({ atajos: '{}' })
+  if (!r.ok) { toast(r.error, 'error'); return }
+  App.settings = r.datos
+  construirAtajos()
+  renderAtajos()
+  toast('Atajos restablecidos ✓')
 }
 
 function cargarConfigForm () {
@@ -98,15 +183,39 @@ async function backupAhora () {
 }
 
 async function buscarCarpeta () {
-  const r = await window.api.dialog.openFolder()
-  if (!r.ok) return
-  $('[name="backup_carpeta"]').value = r.datos.path || ''
+  const campo = $('[name="backup_carpeta"]')
+  const r = await window.api.dialog.openFolder(campo.value.trim() ? { inicial: campo.value.trim() } : undefined)
+  if (!r.ok) { toast(r.error, 'error'); return }
+  if (r.datos && r.datos.cancelado) return
+  const ruta = (r.datos && r.datos.path) || r.path || ''
+  if (ruta) campo.value = ruta
+  else toast('No se pudo leer la carpeta elegida', 'error')
 }
 
 async function buscarCarpetaFacturas () {
-  const r = await window.api.dialog.openFolder()
-  if (!r.ok) return
-  $('[name="facturas_carpeta"]').value = r.datos.path || ''
+  const campo = $('[name="facturas_carpeta"]')
+  const r = await window.api.dialog.openFolder(campo.value.trim() ? { inicial: campo.value.trim() } : undefined)
+  if (!r.ok) { toast(r.error, 'error'); return }
+  if (r.datos && r.datos.cancelado) return
+  const ruta = (r.datos && r.datos.path) || r.path || ''
+  if (ruta) campo.value = ruta
+  else toast('No se pudo leer la carpeta elegida', 'error')
+}
+
+async function verificarCarpetaCampo (campo, estadoSel) {
+  const el = $(`[name="${campo}"]`)
+  const box = $(estadoSel)
+  const r = await window.api.dialog.verificarCarpeta(el.value)
+  if (!r.ok) {
+    if (box) box.innerHTML = `<span class="badge ambar">⚠ No válida</span> ${esc(r.error)}`
+    toast(r.error, 'error')
+    return
+  }
+  el.value = r.datos.ruta
+  if (box) {
+    box.innerHTML = `<span class="estado-chip completada">✓ Carpeta válida${r.datos.creada ? ' (creada ahora)' : ''}</span>` +
+      `<br><span class="mono">${esc(r.datos.ruta)}</span>`
+  }
 }
 
 async function cargarEstadoBackup () {
@@ -133,4 +242,18 @@ async function cargarInfoSistema () {
     <div><dt>Carpeta de datos</dt><dd>${esc(i.userData)}</dd></div>
     <div><dt>Base de datos</dt><dd class="mono">${esc(i.dbPath)}</dd></div>`
   $('#info-version').textContent = `VitPos v${i.version}`
+  const dbRuta = $('#db-ruta')
+  if (dbRuta) dbRuta.value = i.dbPath || ''
+}
+
+async function copiarRutaDb () {
+  const valor = ($('#db-ruta') || {}).value || ''
+  if (!valor) return toast('Todavía no se cargó la ruta', 'error')
+  try {
+    await navigator.clipboard.writeText(valor)
+    toast('Ruta copiada ✓')
+  } catch (_) {
+    $('#db-ruta').select()
+    toast('Copiá la ruta seleccionada con Ctrl+C', 'error')
+  }
 }

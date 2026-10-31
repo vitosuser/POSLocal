@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=VitPos
+Comment=Punto de venta
+Exec=bash /home/vitotramontini/repos/POSLocal/vitpos.sh
+Icon=/home/vitotramontini/repos/POSLocal/src/icon.png
+Terminal=false
+Type=Application
+Categories=Office;
+StartupWMClass=VitPos

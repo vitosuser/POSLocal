@@ -355,6 +355,22 @@ function registrarPagoDeudor (db, datos) {
   })
 }
 
+// Ajuste manual de deuda sin venta: suma (monto > 0) o resta (monto < 0, con piso en 0)
+function ajustarDeudaDeudor (db, datos) {
+  const dni = String(datos.dni || '').trim()
+  const monto = Math.round(Number(datos.monto) || 0)
+  if (!dni) throw new Error('Falta el DNI del deudor')
+  if (!Number.isFinite(monto) || monto === 0) throw new Error('El monto del ajuste debe ser distinto de cero')
+  return transaccion(db, () => {
+    const f = obtenerDeudor(db, dni)
+    if (!f) throw new Error('Deudor no encontrado')
+    const nueva = Math.max(0, Number(f.deuda) + monto)
+    db.prepare(`UPDATE deudores SET deuda=?, debe=?, actualizado_en=? WHERE dni=?`)
+      .run(nueva, nueva > 0 ? 1 : 0, isoLocal(), String(dni).trim())
+    return obtenerDeudor(db, dni)
+  })
+}
+
 // ---------------- Proveedores ----------------
 
 function listarProveedores (db) {
@@ -714,7 +730,7 @@ module.exports = {
   listarProductos, obtenerProducto, guardarProducto, eliminarProducto,
   crearVenta, obtenerVenta, listarVentas, anularVenta, totalesDelDia,
   ajustarStock, movimientosStock,
-  listarDeudores, obtenerDeudor, guardarDeudor, eliminarDeudor, registrarPagoDeudor,
+  listarDeudores, obtenerDeudor, guardarDeudor, eliminarDeudor, registrarPagoDeudor, ajustarDeudaDeudor,
   listarProveedores, obtenerProveedor, guardarProveedor, eliminarProveedor,
   listarCompras, obtenerCompra, guardarCompra, eliminarCompra,
   obtenerSettings, guardarSettings,

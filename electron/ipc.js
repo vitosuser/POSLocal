@@ -80,6 +80,7 @@ function registrarIpc (ctx) {
   ipcMain.handle('deudores:save', conOK((f) => store.guardarDeudor(db, f || {})))
   ipcMain.handle('deudores:remove', conOK((dni) => store.eliminarDeudor(db, dni)))
   ipcMain.handle('deudores:pago', conOK((d) => store.registrarPagoDeudor(db, d || {})))
+  ipcMain.handle('deudores:ajustar', conOK((d) => store.ajustarDeudaDeudor(db, d || {})))
 
   // ---- Proveedores ----
   ipcMain.handle('proveedores:list', conOK(() => store.listarProveedores(db)))
@@ -178,19 +179,30 @@ function registrarIpc (ctx) {
     version: pkg.version,
     nombre: 'VitPos',
     userData: app.getPath('userData'),
-    dbPath: db.name,
+    dbPath: db.vitposPath || (typeof db.location === 'function' ? db.location() : db.location) || db.name || '',
     plataforma: process.platform
   })))
 
   // ---- Folder picker ----
-  ipcMain.handle('dialog:openFolder', async () => {
-    const win = BrowserWindow.getFocusedWindow()
-    const result = await dialog.showOpenDialog(win || BrowserWindow.getAllWindows()[0] || null, {
-      properties: ['openDirectory']
-    })
-    if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true }
-    return { ok: true, path: result.filePaths[0] }
-  })
+  ipcMain.handle('dialog:openFolder', conOKAsync(async (opciones) => {
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null
+    const inicial = String((opciones && opciones.inicial) || '').trim()
+    const props = { properties: ['openDirectory'] }
+    if (inicial) {
+      try {
+        const fs = require('fs')
+        const base = fs.existsSync(inicial) ? inicial : require('path').dirname(inicial)
+        if (fs.existsSync(base)) props.defaultPath = base
+      } catch (_) {}
+    }
+    const result = await dialog.showOpenDialog(win, props)
+    if (result.canceled || !result.filePaths.length) return { cancelado: true }
+    return { path: result.filePaths[0] }
+  }))
+  ipcMain.handle('dialog:verificarCarpeta', conOK((ruta) => {
+    const { verificarCarpeta } = require('./carpetas.js')
+    return verificarCarpeta(ruta)
+  }))
 }
 
 async function imprimirComoSistema (html) {

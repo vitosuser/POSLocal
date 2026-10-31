@@ -13,6 +13,7 @@ const path = require('node:path')
 // handlers exactamente como los invoca ipcRenderer.invoke.
 
 const handlers = new Map()
+let respuestaOpenDialog = { canceled: false, filePaths: ['/tmp/elegida'] }
 const electronPath = require.resolve('electron')
 require.cache[electronPath] = {
   id: electronPath,
@@ -23,13 +24,16 @@ require.cache[electronPath] = {
       handle: (canal, fn) => handlers.set(canal, fn)
     },
     BrowserWindow: class {
+      static getFocusedWindow () { return null }
+      static getAllWindows () { return [] }
       async loadURL () {}
       get webContents () { return this }
       async printToPDF () { return Buffer.from('%PDF-falso') }
       destroy () {}
     },
     dialog: {
-      showSaveDialog: async () => ({ canceled: true })
+      showSaveDialog: async () => ({ canceled: true }),
+      showOpenDialog: async () => respuestaOpenDialog
     }
   }
 }
@@ -80,5 +84,44 @@ test('printer:imprimirVenta recibe el id de la venta', async () => {
   const inexistente = await reimprimir(null, 99999)
   assert.equal(inexistente.ok, false)
   assert.match(inexistente.error, /no encontrada/)
+  db.close()
+})
+
+test('dialog:openFolder devuelve la ruta en datos (contrato del picker)', async () => {
+  const { db } = setup()
+  respuestaOpenDialog = { canceled: false, filePaths: ['/tmp/elegida'] }
+  const abrir = handlers.get('dialog:openFolder')
+  const r = await abrir(null, { inicial: '/tmp' })
+  assert.equal(r.ok, true, JSON.stringify(r))
+  assert.equal(r.datos.path, '/tmp/elegida', 'el frontend lee r.datos.path')
+
+  respuestaOpenDialog = { canceled: true, filePaths: [] }
+  const c = await abrir(null, undefined)
+  assert.equal(c.ok, true)
+  assert.equal(c.datos.cancelado, true, 'cancelar no es error')
+  db.close()
+})
+
+test('dialog:verificarCarpeta valida y normaliza', async () => {
+  const { db } = setup()
+  const verificar = handlers.get('dialog:verificarCarpeta')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vitpos-ipc-carp-'))
+  const bien = await verificar(null, dir)
+  assert.equal(bien.ok, true, JSON.stringify(bien))
+  assert.equal(bien.datos.ruta, path.resolve(dir))
+
+  const mal = await verificar(null, '')
+  assert.equal(mal.ok, false)
+  assert.match(mal.error, /Ingresá una carpeta/)
+  db.close()
+})
+
+test('app:info informa la ruta real del sqlite', async () => {
+  const { db } = setup()
+  const info = handlers.get('app:info')
+  const r = await info(null)
+  assert.equal(r.ok, true, JSON.stringify(r))
+  assert.ok(r.datos.dbPath.endsWith('vitpos.db'), `dbPath invalido: ${r.datos.dbPath}`)
+  assert.ok(fs.existsSync(path.dirname(r.datos.dbPath)), 'la carpeta de la DB debe existir')
   db.close()
 })

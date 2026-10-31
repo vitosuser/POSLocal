@@ -16,17 +16,22 @@
   "devDependencies": {
     "electron": "^37.2.0",
     "electron-builder": "^26.0.12",
+    "electron-reload": "^2.0.0-alpha.1",
     "jsdom": "^30.0.1"
   },
   "build": {
     "appId": "com.vito.vitpos",
     "productName": "VitPos",
+    "directories": {
+      "buildResources": "build"
+    },
     "files": [
       "electron/**/*",
       "src/**/*",
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
@@ -37,6 +42,7 @@
       "allowToChangeInstallationDirectory": true
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage",
         "deb"

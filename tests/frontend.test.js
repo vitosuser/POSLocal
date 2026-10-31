@@ -77,7 +77,7 @@ function crearApi () {
       eliminar: async () => ({ ok: true, datos: { ok: true } })
     },
     ventas: {
-      crear: async (d) => ({ ok: true, datos: { ventaId: 42, cambio: 0, monto_fiado: 0, total: d.total } }),
+      crear: async (d) => { contadores.ultimaVenta = d; return { ok: true, datos: { ventaId: 42, cambio: 0, monto_fiado: 0, total: d.total } } },
       listar: async () => ({ ok: true, datos: [] }),
       detalle: async () => ({ ok: true, datos: null }),
       anular: async () => ({ ok: true, datos: { ok: true } }),
@@ -88,7 +88,8 @@ function crearApi () {
       obtener: async () => ({ ok: true, datos: null }),
       guardar: async (f) => ({ ok: true, datos: f }),
       eliminar: async () => ({ ok: true, datos: { ok: true } }),
-      pago: async () => ({ ok: true, datos: {} })
+      pago: async () => ({ ok: true, datos: {} }),
+      ajustar: async (d) => ({ ok: true, datos: { dni: d.dni, deuda: d.monto } })
     },
     proveedores: {
       listar: async () => ({ ok: true, datos: [] }),
@@ -105,7 +106,8 @@ function crearApi () {
       verFactura: async () => ({ ok: true, datos: { ok: true } })
     },
     dialog: {
-      openFolder: async () => ({ ok: false, canceled: true })
+      openFolder: async () => ({ ok: true, datos: { path: '/tmp/elegida' } }),
+      verificarCarpeta: async (ruta) => ({ ok: true, datos: { ruta: '/tmp/elegida', creada: false } })
     },
     stock: {
       ajustar: async () => ({ ok: true, datos: { stock: 5 } }),
@@ -408,6 +410,21 @@ test('el cobro permite descuento en monto o porcentaje', async () => {
     document.querySelector('#c-recibido').dispatchEvent(new kw.Event('input', { bubbles: true }))
     await new Promise(r => setTimeout(r, 50))
     assert.match(document.querySelector('#c-cambio').textContent, /15,00/)
+    assert.match(document.querySelector('#modal-total').textContent, /135,00/, 'el total grande refleja el descuento')
+  } finally { dom.window.close() }
+})
+
+test('el buscador de venta encuentra por marca', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const input = document.querySelector('#buscador-venta')
+    input.value = 'royal'
+    input.dispatchEvent(new kw.Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 150))
+    const caja = document.querySelector('#sugerencias')
+    assert.equal(caja.classList.contains('oculto'), false, 'sin sugerencias por marca')
+    assert.match(caja.textContent, /Royal Canin/)
+    assert.match(caja.textContent, /Croquetas Perro 3kg/)
   } finally { dom.window.close() }
 })
 
@@ -456,10 +473,224 @@ test('la seccion reposicion existe y renderiza', async () => {
   } finally { dom.window.close() }
 })
 
+test('configuracion muestra la ruta del sqlite', async () => {
+  const { dom, document } = await cargarApp()
+  try {
+    const campo = document.querySelector('#db-ruta')
+    assert.ok(campo, 'falta el campo de ruta de la DB')
+    assert.equal(campo.value, '/tmp/x/vitpos.db')
+    assert.ok(document.querySelector('#btn-copiar-db-ruta'), 'falta boton copiar')
+  } finally { dom.window.close() }
+})
+
 test('configuracion expone la carpeta de facturas', async () => {
   const { dom, document } = await cargarApp()
   try {
     assert.ok(document.querySelector('[name="facturas_carpeta"]'), 'falta input de carpeta de facturas')
     assert.ok(document.querySelector('#btn-buscar-facturas'), 'falta boton buscar facturas')
+  } finally { dom.window.close() }
+})
+
+test('buscar carpeta completa el campo con la ruta elegida', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const campo = document.querySelector('[name="backup_carpeta"]')
+    assert.equal(campo.value, '', 'parte vacio')
+    document.querySelector('#btn-buscar-carpeta').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(campo.value, '/tmp/elegida', 'la ruta elegida debe copiarse al textbox')
+
+    const fac = document.querySelector('[name="facturas_carpeta"]')
+    document.querySelector('#btn-buscar-facturas').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(fac.value, '/tmp/elegida')
+  } finally { dom.window.close() }
+})
+
+test('verificar carpeta normaliza y muestra estado', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    document.querySelector('[name="backup_carpeta"]').value = '/tmp/alguna'
+    document.querySelector('#btn-verificar-backup').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(document.querySelector('[name="backup_carpeta"]').value, '/tmp/elegida')
+    assert.match(document.querySelector('#backup-carpeta-estado').textContent, /Carpeta válida/)
+
+    document.querySelector('[name="facturas_carpeta"]').value = '/tmp/otra'
+    document.querySelector('#btn-verificar-facturas').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.match(document.querySelector('#facturas-carpeta-estado').textContent, /Carpeta válida/)
+  } finally { dom.window.close() }
+})
+
+test('el modal de deudor permite sumar deuda sin venta', async () => {
+  const { dom, document } = await cargarApp()
+  try {
+    assert.ok(document.querySelector('#btn-sumar-deuda'), 'falta boton sumar a deuda')
+  } finally { dom.window.close() }
+})
+
+test('el ojo oculta y muestra los totales del dia', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const btn = document.querySelector('#btn-ojo-totales')
+    assert.ok(btn, 'falta el boton ojo')
+    assert.equal(document.querySelector('#ventas-hoy-total').textContent, '$ 0,00', 'parte visible')
+    btn.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(document.querySelector('#ventas-hoy-total').textContent, '••••••', 'se oculta el total')
+    assert.equal(document.querySelector('#ventas-hoy-cant').textContent, '••', 'se oculta la cantidad')
+    assert.match(btn.innerHTML, /M1 1l22 22/, 'ojo cerrado')
+    btn.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(document.querySelector('#ventas-hoy-total').textContent, '$ 0,00', 'se muestra de nuevo')
+  } finally { dom.window.close() }
+})
+
+test('F1 abre el cobro y Ctrl+L limpia la venta', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const input = document.querySelector('#buscador-venta')
+    input.value = '7790001'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 100))
+    assert.equal(document.querySelectorAll('#carrito-body tr').length, 1)
+
+    input.dispatchEvent(new kw.KeyboardEvent('keydown', { key: 'F1', bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(document.querySelector('#modal-cobro').classList.contains('oculto'), false, 'F1 abre el cobro')
+    document.querySelector('#modal-cobro').classList.add('oculto')
+
+    input.dispatchEvent(new kw.KeyboardEvent('keydown', { key: 'l', ctrlKey: true, bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(document.querySelectorAll('#carrito-body tr').length, 0, 'Ctrl+L limpia')
+  } finally { dom.window.close() }
+})
+
+test('F3 lleva el foco al buscador', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    document.body.focus()
+    document.dispatchEvent(new kw.KeyboardEvent('keydown', { key: 'F3', bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(document.activeElement, document.querySelector('#buscador-venta'))
+  } finally { dom.window.close() }
+})
+
+test('configuracion lista y reasigna atajos', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const filas = document.querySelectorAll('#atajos-lista .atajo-fila')
+    assert.equal(filas.length, 5, 'una fila por accion')
+    assert.match(filas[1].textContent, /F1/, 'abrir-cobro con F1')
+    filas[1].querySelector('[data-accion="cambiar"]').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 30))
+    assert.match(document.querySelector('#atajos-aviso').textContent, /combinación/)
+    kw.dispatchEvent(new kw.KeyboardEvent('keydown', { key: 'F4', bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 80))
+    const filas2 = document.querySelectorAll('#atajos-lista .atajo-fila')
+    assert.match(filas2[1].textContent, /F4/, 'se guardo el nuevo combo')
+  } finally { dom.window.close() }
+})
+
+test('los atajos se ven entre parentesis en los botones', async () => {
+  const { dom, document } = await cargarApp()
+  try {
+    assert.match(document.querySelector('#btn-cobrar').textContent, /\(F1\)/)
+    assert.match(document.querySelector('#btn-limpiar').textContent, /\(Ctrl\+L\)/)
+  } finally { dom.window.close() }
+})
+
+test('pestanas de venta independientes entre si', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const input = document.querySelector('#buscador-venta')
+    input.value = '7790001'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 100))
+    assert.match(document.querySelector('#total-carrito').textContent, /150,00/)
+
+    // nueva pestana vacia, la anterior queda intacta
+    document.querySelector('.tab-nueva').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(document.querySelectorAll('#carrito-body tr').length, 0, 'la nueva pestana parte vacia')
+    assert.equal(document.querySelectorAll('#venta-tabs .tab-btn').length, 3, '2 ventas + boton nueva')
+    input.value = '7790002'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 100))
+    assert.match(document.querySelector('#total-carrito').textContent, /24,00/)
+
+    // volver a la primera: conserva su total
+    document.querySelectorAll('#venta-tabs .tab-btn')[0].dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.match(document.querySelector('#total-carrito').textContent, /150,00/, 'la pestana conserva su venta')
+  } finally { dom.window.close() }
+})
+
+test('confirmar cobra solo la pestana activa', async () => {
+  const { dom, document, kw, api } = await cargarApp()
+  try {
+    const input = document.querySelector('#buscador-venta')
+    input.value = '7790001'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 100))
+    document.querySelector('.tab-nueva').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    input.value = '7790002'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 100))
+
+    document.querySelector('#btn-cobrar').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    document.querySelector('#btn-confirmar-cobro').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 150))
+    const payload = api.__contadores.ultimaVenta
+    assert.ok(payload, 'se llamo a crear la venta')
+    assert.equal(JSON.stringify(payload.items), JSON.stringify([{ codigo: '7790002', cantidad: 1 }]), 'solo los items de la pestana activa')
+    // la otra pestana sigue intacta
+    document.querySelectorAll('#venta-tabs .tab-btn')[0].dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.match(document.querySelector('#total-carrito').textContent, /150,00/)
+  } finally { dom.window.close() }
+})
+
+test('con el cobro abierto no se puede cambiar de pestana', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const input = document.querySelector('#buscador-venta')
+    input.value = '7790001'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 100))
+    document.querySelector('#btn-cobrar').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(document.querySelector('#modal-cobro').classList.contains('oculto'), false)
+    // con el cobro abierto, intentar abrir otra pestana se bloquea
+    document.querySelector('.tab-nueva').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.match(document.querySelector('#toast').textContent, /cobro/)
+    assert.equal(document.querySelectorAll('#venta-tabs .tab-btn').length, 2, 'no se creo otra pestana (1 venta + boton nueva)')
+    assert.equal(document.querySelector('#modal-cobro').classList.contains('oculto'), false, 'el cobro sigue abierto')
+  } finally { dom.window.close() }
+})
+
+test('cerrar pestana conserva las demas y nunca queda sin pestanas', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    const input = document.querySelector('#buscador-venta')
+    input.value = '7790001'
+    tocarEnter(document, kw, input)
+    await new Promise(r => setTimeout(r, 100))
+    document.querySelector('.tab-nueva').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    // cerrar la pestana activa (vacia): queda la primera con su item
+    document.querySelector('.tab-btn.activa .tab-cerrar').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(document.querySelectorAll('#venta-tabs .tab-btn').length, 2, '1 venta + boton nueva')
+    assert.match(document.querySelector('#total-carrito').textContent, /150,00/)
+    // cerrar la ultima con items (confirm=true en el mock): se crea una vacia
+    document.querySelector('.tab-btn.activa .tab-cerrar').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 50))
+    assert.equal(document.querySelectorAll('#venta-tabs .tab-btn').length, 2, '1 pestana vacia + boton nueva')
+    assert.equal(document.querySelectorAll('#carrito-body tr').length, 0)
   } finally { dom.window.close() }
 })

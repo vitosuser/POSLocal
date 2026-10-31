@@ -22,6 +22,8 @@ function initDeudores () {
   })
   const btnPago = $('#btn-guardar-pago')
   if (btnPago) btnPago.addEventListener('click', aplicarPagoDeudor)
+  const btnSumar = $('#btn-sumar-deuda')
+  if (btnSumar) btnSumar.addEventListener('click', sumarDeudaDeudor)
   const btnCancelar = $('#btn-cancelar-deuda')
   if (btnCancelar) btnCancelar.addEventListener('click', cancelarDeudaDeudor)
   renderDeudores()
@@ -89,11 +91,24 @@ async function aplicarPagoDeudor () {
 
 async function cancelarDeudaDeudor () {
   if (!deudorPago) return
+  if (!(Number(deudorPago.deuda) > 0)) return toast('El deudor no tiene deuda pendiente', 'error')
   if (!confirm(`¿Cancelar toda la deuda de "${deudorPago.nombre}" (${fmtMoneda(deudorPago.deuda)})?`)) return
   const r = await window.api.deudores.pago({ dni: deudorPago.dni, monto: deudorPago.deuda })
   if (!r.ok) { toast(r.error, 'error'); return }
   modalCerrar('modal-pago-deudor')
   toast('Deuda cancelada ✓')
+  await cargarDeudores()
+  renderDeudores()
+}
+
+async function sumarDeudaDeudor () {
+  if (!deudorPago) return
+  const monto = aCentavos($('#fp-monto').value)
+  if (!(monto > 0)) return toast('Ingresá un monto mayor a cero', 'error')
+  const r = await window.api.deudores.ajustar({ dni: deudorPago.dni, monto })
+  if (!r.ok) { toast(r.error, 'error'); return }
+  modalCerrar('modal-pago-deudor')
+  toast(`Deuda actualizada ✓ · Debe: ${fmtMoneda(r.datos.deuda)}`)
   await cargarDeudores()
   renderDeudores()
 }
@@ -143,7 +158,6 @@ function renderDeudores () {
     tr.querySelector('[data-accion="editar"]').addEventListener('click', () => abrirModalDeudor(f))
     tr.querySelector('[data-accion="borrar"]').addEventListener('click', () => eliminarDeudor(f))
     const btnPago = tr.querySelector('[data-accion="pago"]')
-    btnPago.disabled = !debe
     btnPago.addEventListener('click', () => abrirPagoDeudor(f))
     body.appendChild(tr)
   }

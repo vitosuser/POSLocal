@@ -84,13 +84,19 @@ async function guardarProductoForm () {
   if (!r.ok) { toast(r.error, 'error'); return }
   const codigoViejo = productoEditando
   productoEditando = null
-  // si se renombro un producto que esta en el carrito, actualizar su clave
-  if (codigoViejo && codigoViejo !== datos.codigo_barras && typeof Venta !== 'undefined' && Venta.carrito.has(codigoViejo)) {
-    const item = Venta.carrito.get(codigoViejo)
-    Venta.carrito.delete(codigoViejo)
-    item.producto = r.datos
-    Venta.carrito.set(datos.codigo_barras, item)
-    if (typeof renderCarrito === 'function') renderCarrito()
+  // si se renombro un producto que esta en alguna pestana, actualizar su clave
+  if (codigoViejo && codigoViejo !== datos.codigo_barras && typeof Venta !== 'undefined') {
+    const tabs = Venta.pestanas && Venta.pestanas.length ? Venta.pestanas : [{ carrito: Venta.carrito }]
+    let toco = false
+    for (const tab of tabs) {
+      if (!tab.carrito.has(codigoViejo)) continue
+      const item = tab.carrito.get(codigoViejo)
+      tab.carrito.delete(codigoViejo)
+      item.producto = r.datos
+      tab.carrito.set(datos.codigo_barras, item)
+      toco = true
+    }
+    if (toco && typeof renderCarrito === 'function') renderCarrito()
   }
   modalCerrar('modal-producto')
   toast('Producto guardado ✓')
