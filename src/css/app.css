@@ -158,7 +158,7 @@ input:focus, select:focus { outline: 2px solid var(--primary-light); border-colo
 .estado-chip.anulada { color: var(--danger-dark); }
 
 /* ============ VENTA ============ */
-.venta-layout { display: grid; grid-template-columns: 1fr 340px; gap: 18px; height: calc(100% - 70px); min-height: 440px; }
+.venta-layout { display: grid; grid-template-columns: 1fr 320px; gap: 18px; height: calc(100% - 70px); min-height: 440px; }
 .carrito { display: flex; flex-direction: column; }
 .carrito .tabla-scroll { flex: 1; }
 .carrito .vacio { display: block; }
@@ -167,11 +167,31 @@ input:focus, select:focus { outline: 2px solid var(--primary-light); border-colo
   padding: 14px 18px; border-top: 2px solid var(--primary);
   background: var(--primary-light);
 }
-.tot-title { font-weight: 700; font-size: 15px; color: var(--primary-dark); }
-.tot-amount { font-size: 30px; font-weight: 800; color: var(--primary-dark); font-variant-numeric: tabular-nums; }
+.tot-title { font-weight: 700; font-size: 16px; color: var(--primary-dark); }
+.tot-amount { font-size: 34px; font-weight: 800; color: var(--primary-dark); font-variant-numeric: tabular-nums; }
+
+/* Productos de la compra mas grandes y legibles */
+#tabla-carrito { font-size: 15px; }
+#tabla-carrito th { font-size: 12px; padding: 10px 14px; }
+#tabla-carrito td { padding: 12px 14px; }
+#tabla-carrito td strong { font-size: 17px; }
+#tabla-carrito td.num { font-size: 15px; }
+#tabla-carrito .cantidad-control button { width: 30px; height: 30px; font-size: 17px; }
+#tabla-carrito .cantidad-control input { width: 70px; padding: 7px 6px; font-size: 15px; }
+.codigo-chip {
+  display: inline-block; margin-left: 8px; padding: 2px 8px;
+  border: 1px dashed var(--border); border-radius: 6px; background: #f4f8f6;
+  color: var(--muted); font-family: "Cascadia Mono", Consolas, "SF Mono", monospace;
+  font-size: 11.5px; vertical-align: middle;
+}
 
 .cobro { display: flex; flex-direction: column; gap: 14px; padding: 18px; height: fit-content; align-self: start; width: 100%; }
 .cobro-venta-dia { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+#tot-mtd { grid-column: 1 / -1; }
+.btn-ojo { width: 38px; height: 34px; padding: 0; border-radius: 10px; flex-shrink: 0; }
+.btn-ojo svg { width: 19px; height: 19px; }
+.filtro-categoria { max-width: 190px; }
+#buscar-productos { max-width: 330px; }
 .cobro-item {
   background: #f7faf9; border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; display: flex; flex-direction: column; gap: 2px;

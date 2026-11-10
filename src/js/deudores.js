@@ -12,7 +12,7 @@ function initDeudores () {
   if (btnGuardar) btnGuardar.addEventListener('click', guardarDeudorForm)
   const buscar = $('#buscar-deudores')
   if (buscar) buscar.addEventListener('input', (e) => {
-    deudoresFiltro = e.target.value.trim().toLowerCase()
+    deudoresFiltro = e.target.value.trim()
     renderDeudores()
   })
   const solo = $('#solo-con-deuda')
@@ -121,10 +121,7 @@ function renderDeudores () {
   const cache = App.deudoresCache || []
   const lista = cache.filter(f => {
     if (deudoresSoloDeuda && !(Number(f.deuda) > 0)) return false
-    if (deudoresFiltro && !(
-      String(f.nombre).toLowerCase().includes(deudoresFiltro) ||
-      String(f.dni).includes(deudoresFiltro)
-    )) return false
+    if (!coincideTexto(deudoresFiltro, f.nombre, f.dni)) return false
     return true
   })
 

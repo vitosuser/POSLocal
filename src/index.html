@@ -104,9 +104,10 @@
           <div class="cobro panel">
             <div class="panel-titulo">
               <h2>Cobro</h2>
-              <button id="btn-ojo-totales" class="btn btn-ghost" type="button" title="Mostrar / ocultar totales del día"></button>
+              <button id="btn-ojo-totales" class="btn btn-ghost btn-ojo" type="button"
+                      title="Mostrar estadísticas del día" aria-expanded="false"></button>
             </div>
-            <div class="cobro-venta-dia">
+            <div class="cobro-venta-dia oculto" id="resumen-dia">
               <div class="cobro-item">
                 <span>Ventas hoy</span>
                 <strong id="ventas-hoy-cant">0</strong>
@@ -140,7 +141,10 @@
         <header class="section-header simple">
           <h1>Productos</h1>
           <div class="toolbar">
-            <input id="buscar-productos" type="text" placeholder="Buscar por nombre o código...">
+            <input id="buscar-productos" type="text" placeholder="Buscar producto, marca o categoría...">
+            <select id="filtro-categoria-productos" class="filtro-categoria" title="Filtrar por categoría">
+              <option value="">Todas las categorías</option>
+            </select>
             <button id="btn-nuevo-producto" class="btn btn-primary">+ Nuevo producto</button>
           </div>
         </header>
@@ -166,7 +170,7 @@
         <header class="section-header simple">
           <h1>Stock</h1>
           <div class="toolbar">
-            <input id="buscar-stock" type="text" placeholder="Buscar producto...">
+            <input id="buscar-stock" type="text" placeholder="Buscar producto, marca o categoría...">
             <label class="check"><input type="checkbox" id="solo-bajo-stock"> <span>Solo bajo stock</span></label>
           </div>
         </header>

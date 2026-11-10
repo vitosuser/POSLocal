@@ -268,11 +268,7 @@ function incrementar (codigo, delta) {
 // ---------- sugerencias ----------
 
 function buscarEnCache (texto) {
-  const t = texto.toLowerCase()
-  return Promise.resolve(App.productosCache.filter(p =>
-    p.activo && (p.nombre.toLowerCase().includes(t) || String(p.codigo_barras).includes(t) ||
-      String(p.marca || '').toLowerCase().includes(t) || String(p.categoria || '').toLowerCase().includes(t))
-  ).slice(0, 8))
+  return Promise.resolve(buscarProductos(App.productosCache, texto, { soloActivos: true, limite: 8 }))
 }
 
 function mostrarSugerencias (lista) {
@@ -337,7 +333,7 @@ function renderCarrito () {
     const f = fmtMoneda
     tr.innerHTML = `
       <td><strong>${esc(item.producto.nombre)}</strong>
-        <div class="estado-info" style="display:inline-block;padding:2px 8px;font-size:11px;margin-left:6px">${esc(item.producto.codigo_barras)}</div></td>
+        <span class="codigo-chip">${esc(item.producto.codigo_barras)}</span></td>
       <td class="num">${f(item.producto.precio)}</td>
       <td class="num"><div class="cantidad-control">
         <button type="button" data-accion="menos">−</button>
@@ -569,22 +565,25 @@ async function confirmarCobro () {
 
 // ---------- resumen del día ----------
 
-function totalesOcultos () {
-  return App.settings.ocultar_totales === '1'
+function resumenDiaAbierto () {
+  return App.settings.resumen_dia_abierto === '1'
 }
 
 function aplicarOjoTotales () {
   const btn = $('#btn-ojo-totales')
+  const panel = $('#resumen-dia')
+  const abierto = resumenDiaAbierto()
+  if (panel) panel.classList.toggle('oculto', !abierto)
   if (btn) {
-    const oculto = totalesOcultos()
-    btn.innerHTML = oculto ? OJO_CERRADO : OJO_ABIERTO
-    btn.title = oculto ? 'Mostrar totales del día' : 'Ocultar totales del día'
+    btn.innerHTML = abierto ? OJO_ABIERTO : OJO_CERRADO
+    btn.title = abierto ? 'Ocultar estadísticas del día' : 'Mostrar estadísticas del día'
+    btn.setAttribute('aria-expanded', abierto ? 'true' : 'false')
   }
 }
 
 async function alternarOjoTotales () {
-  const nuevo = totalesOcultos() ? '0' : '1'
-  const r = await window.api.settings.setMany({ ocultar_totales: nuevo })
+  const nuevo = resumenDiaAbierto() ? '0' : '1'
+  const r = await window.api.settings.setMany({ resumen_dia_abierto: nuevo })
   if (!r.ok) { toast(r.error, 'error'); return }
   App.settings = r.datos
   aplicarOjoTotales()
@@ -596,13 +595,12 @@ async function actualizarVentasDelDia () {
   const r = await window.api.ventas.totales({ desde: hoy, hasta: hoy })
   if (!r.ok) return
   const t = r.datos
-  const oculto = totalesOcultos()
-  $('#ventas-hoy-cant').textContent = oculto ? '••' : t.cantidad
-  $('#ventas-hoy-total').textContent = oculto ? '••••••' : fmtMoneda(t.total)
+  $('#ventas-hoy-cant').textContent = String(t.cantidad)
+  $('#ventas-hoy-total').textContent = fmtMoneda(t.total)
   const met = METODOS.includes(Venta.metodoSeleccionado) ? Venta.metodoSeleccionado : null
   if (met) {
     $('#tot-mtd-nombre').textContent = met
-    $('#tot-mtd-valor').textContent = oculto ? '••••••' : fmtMoneda(t.porMetodo[met] || 0)
+    $('#tot-mtd-valor').textContent = fmtMoneda(t.porMetodo[met] || 0)
   } else {
     $('#tot-mtd-nombre').textContent = 'Por pago'
     $('#tot-mtd-valor').textContent = '-'

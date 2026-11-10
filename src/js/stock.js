@@ -7,7 +7,7 @@ let stockNuevo = false
 
 function initStock () {
   $('#buscar-stock').addEventListener('input', (e) => {
-    stockFiltro = e.target.value.trim().toLowerCase()
+    stockFiltro = e.target.value.trim()
     renderStock()
   })
   $('#solo-bajo-stock').addEventListener('change', (e) => {
@@ -85,15 +85,8 @@ function renderStock () {
   const body = $('#stock-body')
   const vacio = $('#stock-vacio')
   body.innerHTML = ''
-  const lista = App.productosCache.filter(p => {
-    if (stockFiltro && !(
-      p.nombre.toLowerCase().includes(stockFiltro) ||
-      String(p.codigo_barras).includes(stockFiltro) ||
-      String(p.categoria).toLowerCase().includes(stockFiltro)
-    )) return false
-    if (stockSoloBajo && !(p.stock <= p.stock_minimo)) return false
-    return true
-  })
+  const lista = buscarProductos(App.productosCache, stockFiltro)
+    .filter(p => !stockSoloBajo || p.stock <= p.stock_minimo)
 
   for (const p of lista) {
     const bajo = p.stock <= p.stock_minimo

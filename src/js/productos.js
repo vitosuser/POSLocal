@@ -1,20 +1,47 @@
 'use strict'
 
 let productosFiltro = ''
+let productosCategoria = ''
+let categoriasFirma = ''
 let productoEditando = null // codigo_barras original mientras se edita
 
 function initProductos () {
   $('#btn-nuevo-producto').addEventListener('click', () => abrirModalProducto())
   $('#btn-guardar-producto').addEventListener('click', guardarProductoForm)
   $('#buscar-productos').addEventListener('input', (e) => {
-    productosFiltro = e.target.value.trim().toLowerCase()
+    productosFiltro = e.target.value.trim()
     renderProductos()
   })
+  const filtroCategoria = $('#filtro-categoria-productos')
+  if (filtroCategoria) {
+    filtroCategoria.addEventListener('change', (e) => {
+      productosCategoria = e.target.value
+      renderProductos()
+    })
+  }
   $('#p-codigo').addEventListener('keydown', (e) => {
     // Enter en codigo salta a nombre (scan rápido de producto nuevo)
     if (e.key === 'Enter') { e.preventDefault(); $('#p-nombre').focus() }
   })
+  poblarCategoriasProductos()
   renderProductos()
+}
+
+function poblarCategoriasProductos () {
+  const select = $('#filtro-categoria-productos')
+  if (!select) return
+  const categorias = [...new Set(App.productosCache.map(p => p.categoria).filter(Boolean))]
+    .sort((a, b) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' }))
+  const firma = categorias.join('|')
+  if (firma !== categoriasFirma) {
+    categoriasFirma = firma
+    select.innerHTML = '<option value="">Todas las categorías</option>' +
+      categorias.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')
+  }
+  if (productosCategoria && !categorias.includes(productosCategoria)) {
+    productosCategoria = ''
+  }
+  select.value = productosCategoria
 }
 
 function abrirModalProducto (codigoPrecargado = '') {
@@ -118,12 +145,10 @@ function renderProductos () {
   const body = $('#productos-body')
   const vacio = $('#productos-vacio')
   body.innerHTML = ''
-  const lista = App.productosCache.filter(p =>
-    !productosFiltro ||
-    p.nombre.toLowerCase().includes(productosFiltro) ||
-    String(p.codigo_barras).includes(productosFiltro) ||
-    String(p.categoria).toLowerCase().includes(productosFiltro)
-  )
+  poblarCategoriasProductos()
+  const categoria = normalizarBusqueda(productosCategoria)
+  const lista = buscarProductos(App.productosCache, productosFiltro)
+    .filter(p => !categoria || normalizarBusqueda(p.categoria) === categoria)
 
   for (const p of lista) {
     const tr = document.createElement('tr')

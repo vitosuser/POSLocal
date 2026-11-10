@@ -530,20 +530,83 @@ test('el modal de deudor permite sumar deuda sin venta', async () => {
   } finally { dom.window.close() }
 })
 
-test('el ojo oculta y muestra los totales del dia', async () => {
+test('el resumen del dia arranca cerrado y el ojo lo despliega', async () => {
   const { dom, document, kw } = await cargarApp()
   try {
     const btn = document.querySelector('#btn-ojo-totales')
+    const panel = document.querySelector('#resumen-dia')
     assert.ok(btn, 'falta el boton ojo')
-    assert.equal(document.querySelector('#ventas-hoy-total').textContent, '$ 0,00', 'parte visible')
-    btn.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
-    await new Promise(r => setTimeout(r, 80))
-    assert.equal(document.querySelector('#ventas-hoy-total').textContent, '••••••', 'se oculta el total')
-    assert.equal(document.querySelector('#ventas-hoy-cant').textContent, '••', 'se oculta la cantidad')
+    assert.ok(panel, 'falta el panel de resumen')
+    assert.equal(panel.classList.contains('oculto'), true, 'arranca cerrado')
+    assert.equal(btn.getAttribute('aria-expanded'), 'false')
     assert.match(btn.innerHTML, /M1 1l22 22/, 'ojo cerrado')
+
     btn.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
     await new Promise(r => setTimeout(r, 80))
-    assert.equal(document.querySelector('#ventas-hoy-total').textContent, '$ 0,00', 'se muestra de nuevo')
+    assert.equal(panel.classList.contains('oculto'), false, 'se despliega')
+    assert.equal(btn.getAttribute('aria-expanded'), 'true')
+    assert.equal(document.querySelector('#ventas-hoy-total').textContent, '$ 0,00')
+    assert.equal(document.querySelector('#ventas-hoy-cant').textContent, '0')
+    assert.match(btn.innerHTML, /circle cx="12" cy="12" r="3"/, 'ojo abierto')
+
+    btn.dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+    assert.equal(panel.classList.contains('oculto'), true, 'se vuelve a cerrar')
+  } finally { dom.window.close() }
+})
+
+test('la busqueda de productos ignora mayusculas y acentos', async () => {
+  const { dom } = await cargarApp()
+  try {
+    assert.equal(dom.window.normalizarBusqueda('  Piñón ÁCIDO  '), 'pinon acido')
+    const lista = [
+      { codigo_barras: '1', nombre: 'Piñón Ácido', marca: 'Línea Ñandú', categoria: 'Limpieza', activo: 1 }
+    ]
+    assert.equal(dom.window.buscarProductos(lista, 'PINON acido').length, 1)
+    assert.equal(dom.window.buscarProductos(lista, 'nandu').length, 1)
+    assert.equal(dom.window.buscarProductos(lista, 'limpieza').length, 1)
+  } finally { dom.window.close() }
+})
+
+test('la busqueda de productos tolera un error de tipeo', async () => {
+  const { dom } = await cargarApp()
+  try {
+    const lista = [
+      { codigo_barras: '1', nombre: 'Detergente 1L', marca: '', categoria: 'Limpieza', activo: 1 },
+      { codigo_barras: '2', nombre: 'Croquetas Perro 3kg', marca: 'Royal Canin', categoria: 'Alimentos', activo: 1 }
+    ]
+    const res = dom.window.buscarProductos(lista, 'detergnete')
+    assert.equal(res.length, 1)
+    assert.equal(res[0].nombre, 'Detergente 1L')
+  } finally { dom.window.close() }
+})
+
+test('productos busca por marca y filtra por categoria', async () => {
+  const { dom, document, kw } = await cargarApp()
+  try {
+    document.querySelector('.nav-item[data-seccion="productos"]').dispatchEvent(new kw.MouseEvent('click', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 80))
+
+    const input = document.querySelector('#buscar-productos')
+    input.value = 'ROYAL'
+    input.dispatchEvent(new kw.Event('input', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 40))
+    let filas = document.querySelectorAll('#productos-body tr')
+    assert.equal(filas.length, 1, 'debe encontrar por marca')
+    assert.match(filas[0].textContent, /Croquetas Perro 3kg/)
+
+    input.value = ''
+    input.dispatchEvent(new kw.Event('input', { bubbles: true }))
+    const select = document.querySelector('#filtro-categoria-productos')
+    assert.ok(select, 'falta el filtro por categoria')
+    assert.match(select.textContent, /Alimentos/)
+    assert.match(select.textContent, /Limpieza/)
+    select.value = 'Limpieza'
+    select.dispatchEvent(new kw.Event('change', { bubbles: true }))
+    await new Promise(r => setTimeout(r, 40))
+    filas = document.querySelectorAll('#productos-body tr')
+    assert.equal(filas.length, 1, 'debe filtrar por categoria')
+    assert.match(filas[0].textContent, /Detergente 1L/)
   } finally { dom.window.close() }
 })
 

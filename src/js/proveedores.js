@@ -10,7 +10,7 @@ function initProveedores () {
   if (btnGuardar) btnGuardar.addEventListener('click', guardarProveedorForm)
   const buscar = $('#buscar-proveedores')
   if (buscar) buscar.addEventListener('input', (e) => {
-    proveedoresFiltro = e.target.value.trim().toLowerCase()
+    proveedoresFiltro = e.target.value.trim()
     renderProveedores()
   })
   renderProveedores()
@@ -60,14 +60,9 @@ function renderProveedores () {
   if (!body) return
   body.innerHTML = ''
   const cache = App.proveedoresCache || []
-  const lista = cache.filter(p => {
-    if (!proveedoresFiltro) return true
-    return (
-      String(p.nombre).toLowerCase().includes(proveedoresFiltro) ||
-      String(p.rubro || '').toLowerCase().includes(proveedoresFiltro) ||
-      String(p.contacto || '').toLowerCase().includes(proveedoresFiltro)
-    )
-  })
+  const lista = cache.filter(p =>
+    coincideTexto(proveedoresFiltro, p.nombre, p.rubro, p.contacto)
+  )
 
   for (const p of lista) {
     const tr = document.createElement('tr')

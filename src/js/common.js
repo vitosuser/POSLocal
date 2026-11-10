@@ -40,6 +40,146 @@ function esc (s) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
+// ---------- busqueda de texto ----------
+// Normaliza mayusculas, acentos y signos: "Piñón Ácido" -> "pinon acido".
+function normalizarBusqueda (texto) {
+  return String(texto == null ? '' : texto)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+// Distancia de edicion simple, para tolerar errores de tipeo.
+function distanciaEdicion (a, b) {
+  if (a === b) return 0
+  if (!a.length) return b.length
+  if (!b.length) return a.length
+  let anterior = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    const actual = [i]
+    for (let j = 1; j <= b.length; j++) {
+      actual[j] = Math.min(
+        anterior[j] + 1,
+        actual[j - 1] + 1,
+        anterior[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+    anterior = actual
+  }
+  return anterior[b.length]
+}
+
+function puntajeToken (token, campo, palabras) {
+  if (!campo) return 0
+  if (campo === token) return 60
+  const partes = palabras || campo.split(' ')
+  if (partes.includes(token)) return 55
+  if (campo.startsWith(token)) return 50
+  if (partes.some(p => p.startsWith(token))) return 44
+  if (campo.includes(token)) return 34
+  if (token.length >= 3) {
+    const max = token.length >= 8 ? 2 : 1
+    for (const palabra of partes) {
+      if (Math.abs(palabra.length - token.length) > max) continue
+      if (distanciaEdicion(token, palabra) <= max) return 20
+    }
+  }
+  return 0
+}
+
+// Cache del texto normalizado: los productos se reemplazan al recargar la base,
+// asi que la identidad del objeto alcanza como clave.
+const indiceProductosCache = new WeakMap()
+function indiceBusquedaProducto (p) {
+  let indice = indiceProductosCache.get(p)
+  if (indice) return indice
+  const codigo = normalizarBusqueda(p.codigo_barras)
+  const nombre = normalizarBusqueda(p.nombre)
+  const marca = normalizarBusqueda(p.marca)
+  const categoria = normalizarBusqueda(p.categoria)
+  indice = {
+    codigoCompacto: codigo.replace(/\s+/g, ''),
+    nombre,
+    nombreCompacto: nombre.replace(/\s+/g, ''),
+    nombrePalabras: nombre ? nombre.split(' ') : [],
+    marca,
+    marcaCompacta: marca.replace(/\s+/g, ''),
+    marcaPalabras: marca ? marca.split(' ') : [],
+    categoria,
+    categoriaCompacta: categoria.replace(/\s+/g, ''),
+    categoriaPalabras: categoria ? categoria.split(' ') : []
+  }
+  indiceProductosCache.set(p, indice)
+  return indice
+}
+
+// Busca productos por codigo, nombre, marca y categoria. Ignora acentos y
+// mayusculas, acepta varias palabras en cualquier orden y tolera typos leves.
+// Devuelve los resultados ordenados por relevancia.
+function buscarProductos (lista, consulta, opciones = {}) {
+  const items = Array.isArray(lista) ? lista : []
+  const soloActivos = opciones.soloActivos === true
+  const limite = Number(opciones.limite) > 0 ? Number(opciones.limite) : 0
+  const q = normalizarBusqueda(consulta)
+  const visibles = soloActivos ? items.filter(p => p && p.activo) : items.filter(Boolean)
+  if (!q) return limite ? visibles.slice(0, limite) : visibles.slice()
+
+  const tokens = q.split(' ').filter(Boolean)
+  const qCompacta = q.replace(/\s+/g, '')
+  const resultados = []
+
+  for (const p of visibles) {
+    const indice = indiceBusquedaProducto(p)
+    const { codigoCompacto, nombre, marca, categoria } = indice
+
+    let total = 0
+    if (qCompacta && codigoCompacto === qCompacta) total += 300
+    else if (qCompacta && codigoCompacto.startsWith(qCompacta)) total += 180
+    else if (qCompacta && codigoCompacto.includes(qCompacta)) total += 110
+
+    let coincide = true
+    for (const token of tokens) {
+      const tokenCodigo = token.replace(/\s+/g, '')
+      let mejor = 0
+      if (tokenCodigo && codigoCompacto.includes(tokenCodigo)) mejor = 70
+      if (tokenCodigo.length >= 2) {
+        if (indice.nombreCompacto.includes(tokenCodigo)) mejor = Math.max(mejor, 36)
+        if (indice.marcaCompacta.includes(tokenCodigo)) mejor = Math.max(mejor, 34)
+        if (indice.categoriaCompacta.includes(tokenCodigo)) mejor = Math.max(mejor, 32)
+      }
+      const puntajeNombre = puntajeToken(token, nombre, indice.nombrePalabras)
+      if (puntajeNombre) mejor = Math.max(mejor, puntajeNombre + 10)
+      mejor = Math.max(mejor, puntajeToken(token, marca, indice.marcaPalabras))
+      mejor = Math.max(mejor, puntajeToken(token, categoria, indice.categoriaPalabras))
+      if (!mejor) { coincide = false; break }
+      total += mejor
+    }
+    if (!coincide) continue
+
+    if (nombre.includes(q)) total += 30
+    if (marca.includes(q)) total += 20
+    if (categoria.includes(q)) total += 20
+    resultados.push({ producto: p, puntaje: total })
+  }
+
+  resultados.sort((a, b) =>
+    b.puntaje - a.puntaje ||
+    String(a.producto.nombre).localeCompare(String(b.producto.nombre), 'es', { sensitivity: 'base' }))
+
+  const ordenados = resultados.map(r => r.producto)
+  return limite ? ordenados.slice(0, limite) : ordenados
+}
+
+// Filtro simple para listas que no son de productos (proveedores, deudores).
+function coincideTexto (consulta, ...campos) {
+  const q = normalizarBusqueda(consulta)
+  if (!q) return true
+  const texto = normalizarBusqueda(campos.join(' '))
+  return q.split(' ').every(token => texto.includes(token))
+}
+
 let toastTimer = null
 function toast (msg, tipo = '') {
   const t = $('#toast')

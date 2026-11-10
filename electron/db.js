@@ -171,6 +171,7 @@ const SETTING_DEFAULTS = {
   facturas_carpeta: '',
   // Privacidad en el mostrador
   ocultar_totales: '0',             // '1' = oculta ventas/total del dia
+  resumen_dia_abierto: '0',         // '1' = muestra el panel de estadisticas del dia
   // Atajos de teclado (JSON id->combo; '' = sin asignar)
   atajos: ''
 }

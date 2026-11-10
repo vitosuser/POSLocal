@@ -28,21 +28,16 @@ function initReposicion () {
   const buscador = $('#co-buscador')
   if (buscador) {
     buscador.addEventListener('input', () => {
-      const valor = buscador.value.trim().toLowerCase()
+      const valor = buscador.value.trim()
       if (!valor) { $('#co-sugerencias').classList.add('oculto'); return }
-      const res = App.productosCache.filter(p =>
-        p.nombre.toLowerCase().includes(valor) || String(p.codigo_barras).includes(valor)
-      ).slice(0, 8)
-      mostrarCoSugerencias(res)
+      mostrarCoSugerencias(buscarProductos(App.productosCache, valor, { limite: 8 }))
     })
     buscador.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return
       e.preventDefault()
-      const valor = buscador.value.trim().toLowerCase()
+      const valor = buscador.value.trim()
       if (!valor) return
-      const res = App.productosCache.filter(p =>
-        p.nombre.toLowerCase().includes(valor) || String(p.codigo_barras).includes(valor)
-      ).slice(0, 8)
+      const res = buscarProductos(App.productosCache, valor, { limite: 8 })
       if (res.length) { agregarCoItem(res[0]); buscador.value = ''; $('#co-sugerencias').classList.add('oculto') }
       else toast('No se encontró ningún producto con ese criterio', 'error')
     })
