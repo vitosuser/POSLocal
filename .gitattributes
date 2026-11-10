@@ -1,0 +1,8 @@
+# Scripts de Windows con CRLF para que cmd.exe los ejecute bien.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Scripts de Linux siempre con LF.
+*.sh text eol=lf
+*.desktop text eol=lf

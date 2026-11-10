@@ -9,6 +9,12 @@ const backup = require('./backup.js')
 
 app.setName('VitPos')
 
+// Windows: identifica la app para la barra de tareas (agrupacion y notificaciones).
+// En Linux/macOS no se ejecuta, asi que no cambia el comportamiento.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.vito.vitpos')
+}
+
 // En desarrollo recarga la ventana sola al guardar cambios (sin rebuildear).
 // En la app instalada (empaquetada) no hace nada.
 if (!app.isPackaged) {
@@ -25,6 +31,12 @@ let db = null
 
 const pkg = require('../package.json')
 
+// En Windows sin empaquetar conviene el .ico (mejor en la barra de tareas).
+// La app empaquetada y Linux siguen usando el PNG de siempre.
+const iconoVentana = (process.platform === 'win32' && !app.isPackaged)
+  ? path.join(__dirname, '..', 'build', 'icon.ico')
+  : path.join(__dirname, '..', 'src', 'icon.png')
+
 function crearVentana () {
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -35,7 +47,7 @@ function crearVentana () {
     autoHideMenuBar: true,
     show: false,
     title: 'VitPos',
-    icon: path.join(__dirname, '..', 'src', 'icon.png'),
+    icon: iconoVentana,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
